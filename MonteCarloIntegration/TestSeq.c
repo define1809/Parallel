@@ -4,7 +4,7 @@
 
 #include <time.h>
 
-#define EXACT_SOLUTION (6.1215657)
+#define EXACT_SOLUTION (4.0*M_PI/3.0)
 
 #define DX (2)
 
@@ -45,14 +45,14 @@ int main(int argc, char **argv)
 
     while (delta > eps)
     {
-        n += 10000;
+        n += 10;
 
         for (; i < n; ++i)
         {
             double y = rand01();
             double z = rand01();
 
-            integral_summ += f(y, z);
+            integral_summ += F(y, z);
         }
 
         I = 4 * DX * (integral_summ / n);
