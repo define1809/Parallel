@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 
     while (delta > eps)
     {
-        n += 10;
+        n += 10000;
 
         for (; i < n; ++i)
         {
