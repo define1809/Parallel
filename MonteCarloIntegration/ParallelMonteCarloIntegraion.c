@@ -2,10 +2,14 @@
 #include <stdio.h>
 #include <math.h>
 #include <mpi.h>
+#include <time.h>
 
 #define EXACT_SOLUTION (4.0*M_PI/3.0)
 #define INTEGRATION_CONST (8)
-#define PORTION_POINTS (64 * 100)
+#define PROC_AMOUNT (3 * 15 * 63)
+#define PORTION_POINTS (PROC_AMOUNT * 10)
+
+enum sync_t {STOP = 0, RUN = 1};
 
 double f(double y, double z)
 {
@@ -37,9 +41,8 @@ int main(int argc, char **argv)
     double integral_summ = 0.0;
     double reduced_integral_summ = 0.0;
     double I = 0.0;
-    int start_idx = 0; 
     MPI_Status Status;
-    int flag = 1;
+    enum sync_t sync_flag = RUN;
 
     MPI_Init(&argc, &argv);
 
@@ -57,10 +60,9 @@ int main(int argc, char **argv)
 
     if (rank == 0)
     {
-        int d = 0;
         double start = MPI_Wtime();
         srand(start);
-//        MPI_Request request;        
+
         while (1)
         {
             points += PORTION_POINTS; 
@@ -78,18 +80,14 @@ int main(int argc, char **argv)
                          rk, 
                          0,
                          MPI_COMM_WORLD);
-                    //     &request); 
                 MPI_Send(points_z, 
                          portion_points, 
                          MPI_DOUBLE, 
                          rk, 
                          0,
                          MPI_COMM_WORLD);
-                     //    &request);                
             } 
            
-          //  MPI_Wait(&request, MPI_STATUS_IGNORE);
- 
             MPI_Reduce(&integral_summ, 
                        &reduced_integral_summ, 
                        1, 
@@ -100,32 +98,30 @@ int main(int argc, char **argv)
 
             I = INTEGRATION_CONST * (reduced_integral_summ / points);
             delta = fabs(I - EXACT_SOLUTION);
+            
+            printf("%lf\n", delta);
 
             if (delta < eps)
             {
-                flag = 0;
+                sync_flag = STOP;
                 for (int rk = 1; rk < size; ++rk)
-                    MPI_Send(&flag,
+                    MPI_Send(&sync_flag,
                               1,
                               MPI_INT,
                               rk,
                               0,
                               MPI_COMM_WORLD);
-                          //    &request);    
-              //  MPI_Wait(&request, MPI_STATUS_IGNORE); 
                 break;
             }   
             else
             {
                 for (int rk = 1; rk < size; ++rk)
-                    MPI_Send(&flag,
+                    MPI_Send(&sync_flag,
                               1,
                               MPI_INT,
                               rk,
                               0,
                               MPI_COMM_WORLD);
-                           //   &request);
-               // MPI_Wait(&request, MPI_STATUS_IGNORE);
             }
         } 
 
@@ -137,7 +133,7 @@ points, end - start);
     }
     else
     {
-        while (flag)
+        while (sync_flag)
         {
             MPI_Recv(points_y, 
                      portion_points, 
@@ -165,7 +161,7 @@ points, end - start);
                        0,
                        MPI_COMM_WORLD);
 
-            MPI_Recv(&flag,
+            MPI_Recv(&sync_flag,
                      1,
                      MPI_INT,
                      0,
