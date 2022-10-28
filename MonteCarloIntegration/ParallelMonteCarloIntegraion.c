@@ -6,8 +6,8 @@
 
 #define EXACT_SOLUTION (4.0*M_PI/3.0)
 #define INTEGRATION_CONST (8)
-#define PROC_AMOUNT (3 * 15 * 63)
-#define PORTION_POINTS (PROC_AMOUNT * 10)
+#define PROC_AMOUNT (3 * 5 * 17 * 33)
+#define PORTION_POINTS (PROC_AMOUNT * 100)
 
 enum sync_t {STOP = 0, RUN = 1};
 
@@ -99,8 +99,6 @@ int main(int argc, char **argv)
             I = INTEGRATION_CONST * (reduced_integral_summ / points);
             delta = fabs(I - EXACT_SOLUTION);
             
-            printf("%lf\n", delta);
-
             if (delta < eps)
             {
                 sync_flag = STOP;
