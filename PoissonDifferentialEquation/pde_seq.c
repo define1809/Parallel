@@ -170,7 +170,10 @@ void fill_Aw(double **w, double **r, double h1, double h2, size_t M, size_t N) {
     r[M][j] = (1.0 / h1)*(left_delta(w, M - 1, j, h1, h2) + (1.0 / h1)*a(M, j, h1, h2)*w[M - 1][j]) - right_delta(w, M - 1, j, h1, h2) + q((M - 1)*h1, j*h2)*w[M - 1][j];
   }  
   // Corner grid points.
-  // ?
+  r[0][0] = phi(0, 0);
+  r[M][0] = phi(M*h1, 0);
+  r[0][N] = phi(0, N*h2);
+  r[M][N] = phi(M*h1, N*h2);
 }
 
 int main(int argc, char **argv) {
