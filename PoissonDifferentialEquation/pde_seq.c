@@ -189,5 +189,72 @@ void fill_Aw(double **w, double **r, double h1, double h2, size_t M, size_t N) {
 }
 
 int main(int argc, char **argv) {
+  if (argc < 3) {
+    fprintf(stderr, "Not enought arguments.\n");
+    return -1;
+  }
+  const size_t M = atoi(argv[1]);
+  const size_t N = atoi(argv[2]);
+  const double eps = 1e-6; 
+  const double h1 = 4.0 / (double) M;
+  const double h2 = 3.0 / (double) N;
+  double tau = 0.0;
+  double **w = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    w[i] = (double*) malloc((N + 1)*sizeof(double));
+  double **tmp_w = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    tmp_w[i] = (double*) malloc((N + 1)*sizeof(double));
+  double **r = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    r[i] = (double*) malloc((N + 1)*sizeof(double));
+  double **Ar = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    Ar[i] = (double*) malloc((N + 1)*sizeof(double)); 
+  double **B = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    B[i] = (double*) malloc((N + 1)*sizeof(double)); 
+  double **u_arr = (double**) malloc((M + 1)*sizeof(double*));
+  for (size_t i = 0; i <= M; ++i)
+    u_arr[i] = (double*) malloc((N + 1)*sizeof(double));
+  // w^0 = 0
+  for (size_t i = 0; i <= M; ++i)
+    for (size_t j = 0; j <= N; ++j) 
+      w[i][j] = 0.0;
+  // Fill B
+  fill_B(B, M, N, h1, h2);
+  // Iterations
+  while (1) {
+    // r^(k) = Aw^(k)
+    fill_Aw(w, r, h1, h2, M, N);
+    // r^(k) = Aw^(k) - B
+    for (size_t i = 0; i <= M; ++i)
+      for (size_t j = 0; j <= N; ++j) {
+        r[i][j] -= B[i][j];
+        tmp_w[i][j] = w[i][j];
+      }
+    // Ar^(k)
+    fill_Aw(r, Ar, h1, h2, M, N);
+    // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
+    tau = dot_product(Ar, r, h1, h2, M, N) / pow(norm(Ar, h1, h2, M, N), 2); 
+    //w^(k+1) = w^(k) - tau^(k+1)r^(k)
+    for (size_t i = 0; i <= M; ++i)
+      for (size_t j = 0; j <= N; ++j)
+        w[i][j] = w[i][j] - tau*r[i][j]; 
+    //tmp_w = w^(k+1) - w^(k)
+    for (size_t i = 0; i <= M; ++i)
+      for (size_t j = 0; j <= N; ++j)
+        tmp_w[i][j] = w[i][j] - tmp_w[i][j]; 
+    double diff = norm(tmp_w, h1, h2, M, N);
+//    printf("%lf\n", diff);
+    if (diff < eps)
+      break; 
+  }
+  for (size_t i = 0; i <= M; ++i)
+    for (size_t j = 0; j <= N; ++j)
+      u_arr[i][j] = u(i*h1, j*h2);
+  for (size_t i = 0; i <= M; ++i)
+    for (size_t j = 0; j <= N; ++j)
+      printf("%lf,%lf\n", u_arr[i][j] , w[i][j]);
   return 0;
 }
