@@ -75,17 +75,17 @@ double left_dy(double **v, size_t i, size_t j, double h2) {
 // Laplace operator.
 
 double left_delta(double **w, size_t i, size_t j, double h1, double h2) {
-  return (k(i*h1 + 0.5*h1, j*h2)*right_dx(w, i, j, h1) - a(i, j, h1,
+  return (1.0 / h1)*(k(i*h1 + 0.5*h1, j*h2)*right_dx(w, i, j, h1) - a(i, j, h1,
 h2)*left_dx(w, i, j, h1));
 }
 
 double right_delta(double **w, size_t i, size_t j, double h1, double h2) {
-  return (k(i*h1, j*h2 + 0.5*h2)*right_dy(w, i, j, h2) - b(i, j,
+  return (1.0 / h2)*(k(i*h1, j*h2 + 0.5*h2)*right_dy(w, i, j, h2) - b(i, j,
 h1, h2)*left_dy(w, i, j, h2));
 }
 
 double laplace_operator(double **w, size_t i, size_t j, double h1, double h2) {
-  return (1.0 / h1)*left_delta(w, i, j, h1, h2) + (1.0 / h2)*right_delta(w, i, j, h1, h2);
+  return left_delta(w, i, j, h1, h2) + right_delta(w, i, j, h1, h2);
 }
 
 // Fill B (right part of Aw = B).
@@ -149,6 +149,18 @@ double norm(double **u, double h1, double h2, size_t M, size_t N) {
   return sqrt(dot_product(u, u, h1, h2, M, N));
 }
 
+// (aw_~x)_ij
+
+double aw(double **w, size_t i, size_t j, double h1, double h2) {
+  return k(i*h1 - 0.5*h1, j*h2)*left_dx(w, i, j, h1);
+}
+
+// (bw_~y)_ij
+
+double bw(double **w, size_t i, size_t j, double h1, double h2) {
+  return k(i*h1, j*h2 - 0.5*h2)*left_dy(w, i, j, h2);
+}
+
 // Fill Aw (left part of Aw = B).
 // r = Aw.
 
@@ -161,13 +173,13 @@ void fill_Aw(double **w, double **r, double h1, double h2, size_t M, size_t N) {
   } 
   // Bottom and top grid points.
   for (size_t i = 1; i < M; ++i) {
-    r[i][0] = -(2.0 / h2)*right_delta(w, i, 1, h1, h2) + (q(i*h1, 0) + 2.0 / h1)*w[i][0] - left_delta(w, i, 0, h1, h2);
-    r[i][N] = -left_delta(w, i, N - 1, h1, h2) + (1.0 / h2)*(right_delta(w, i, N - 1, h1, h2) + (1.0 / h2)*w[i][N - 1]) + q(i*h1, (N - 1)*h2)*w[i][N-1];
+    r[i][0] = -(2.0 / h2)*bw(w, i, 1, h1, h2) + (q(i*h1, 0) + 2.0 / h1)*w[i][0] - left_delta(w, i, 0, h1, h2);
+    r[i][N] = -left_delta(w, i, N - 1, h1, h2) + (1.0 / h2)*(bw(w, i, N - 1, h1, h2) + (1.0 / h2)*w[i][N - 1]) + q(i*h1, (N - 1)*h2)*w[i][N-1];
   }
   // Left and right grid points.
   for (size_t j = 1; j < N; ++j) {
-    r[0][j] = -(1.0 / h1)*left_delta(w, 2, j, h1, h2) + (1.0 / h1*h1)*left_delta(w, 1, j, h1, h2) - right_delta(w, 1, j, h1, h2) + q(1*h1, j*h2)*w[1][j];
-    r[M][j] = (1.0 / h1)*(left_delta(w, M - 1, j, h1, h2) + (1.0 / h1)*a(M, j, h1, h2)*w[M - 1][j]) - right_delta(w, M - 1, j, h1, h2) + q((M - 1)*h1, j*h2)*w[M - 1][j];
+    r[0][j] = -(1.0 / h1)*aw(w, 2, j, h1, h2) + (1.0 / h1*h1)*aw(w, 1, j, h1, h2) - right_delta(w, 1, j, h1, h2) + q(1*h1, j*h2)*w[1][j];
+    r[M][j] = (1.0 / h1)*(aw(w, M - 1, j, h1, h2) + (1.0 / h1)*a(M, j, h1, h2)*w[M - 1][j]) - right_delta(w, M - 1, j, h1, h2) + q((M - 1)*h1, j*h2)*w[M - 1][j];
   }  
   // Corner grid points.
   r[0][0] = phi(0, 0);
