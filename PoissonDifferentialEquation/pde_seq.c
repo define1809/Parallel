@@ -188,8 +188,12 @@ void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
 }
 
 int main(int argc, char** argv) {
-    const size_t M = 40;
-    const size_t N = 40;
+    if (argc < 3) {
+      fprintf(stderr, "Not enought arguments!\n");
+      return 1;
+    }
+    const size_t M = atoi(argv[1]);
+    const size_t N = atoi(argv[2]);
     const double eps = 1e-6;
     const double h1 = 4.0 / (double)M;
     const double h2 = 3.0 / (double)N;
@@ -248,6 +252,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i <= M; ++i)
         for (size_t j = 0; j <= N; ++j)
             u_arr[i][j] = u(i * h1, j * h2);
+    printf("%lu,%lu\n", M, N);
     for (size_t i = 0; i <= M; ++i)
         for (size_t j = 0; j <= N; ++j)
             printf("%lf,%lf\n", u_arr[i][j], w[i][j]);
