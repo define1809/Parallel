@@ -6,6 +6,9 @@
 #define TRUE (1)
 #define FALSE (0)
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 // Structure which contains process location info and neighbors
 struct ProcInfo {
   // Process rank
@@ -14,6 +17,12 @@ struct ProcInfo {
   int coords[2];
   // Ranks of the neighbors of the process
   int left, right, up, down;
+  // Process local domain size
+  int m, n;
+  // Process global domain start and end point
+  // start[0] <= points[i] < end[0]
+  // start[1] <= points[j] < end[1]
+  int start[2], end[2];
 };
 typedef struct ProcInfo ProcInfo_t;
 
@@ -201,26 +210,101 @@ void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
   r[M][N] = w[M][N];
 }
 
-void domain_decomposition(MPI_Comm *GridComm, ProcInfo_t *info) {
+// Let num = 2^power, that function returns the power
+// else return -1
+
+int get_power(int num) {
+  if (num <= 0)
+    return -1;
+  int power = 0;
+  while ((num & 1) == 0) {
+    ++power;
+    num = num >> 1; 
+  } 
+  if ((num >> 1) != 0)
+    return -1;
+  return power;
+}
+
+// Returns px, where px is dims[0] = 2^px
+
+int split(size_t M, size_t N, int power) {
+  double m = (double)M;
+  double n = (double)N;
+  int px = 0;
+  for (int i = 0; i < power; ++i) {
+    if (m > n) {
+      m /= 2.0;
+      ++px;
+    } else {
+      n /= 2.0;
+    }
+  } 
+  return px;
+}
+
+void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
+  // The number pf processes
   int ProcNum;
-  int dims[2], periods[2];
+  // ProcNum = 2^(power), power = px + py
+  int power, px, py;
+  // dims[0] = 2^px, dims[1] = 2^py
+  int dims[2];
+  // 2D topology dimension
   const int ndims = 2;
-  // Temp dims = 2
-  dims[0] = dims[1] = 2;
   // Topologically grid is not closed
-  periods[0] = periods[1] = FALSE;
+  int periods[2] = {FALSE, FALSE};
   // Init MPI lib
   MPI_Comm_size(MPI_COMM_WORLD, &ProcNum);
   MPI_Comm_rank(MPI_COMM_WORLD, &(info->rank));
+  // Check that grid size contains positive numbers
+/*if ((M <= 0) || (N <= 0)) {
+    if (info->rank == 0)  
+      fprintf(stderr, "M and N must be positive!\n");
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+  } */
+  // Check that number of processes is a power of 2 and get power
+  if ((power = get_power(ProcNum)) < 0) {
+    if (info->rank == 0)
+      fprintf(stderr, "The number of procs must be a power of 2!\n"); 
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+  } 
+  // Find such px, py that ProcNum = 2^(px+py)
+  px = split(M, N, power);
+  py = power - px;
+  // Find dims[0] = 2^px and dims[1] = 2^py
+  dims[0] = (unsigned int)1 << px; dims[1] = (unsigned int)1 << py;
+  // Find local domain size: m = M/(2^px), n = N/(2^py) 
+  info->m = (M+1) >> px; info->n = (N+1) >> py;
+  int rx = M+1 - dims[0] * info->m;
+  int ry = N+1 - dims[1] * info->n;
   // Create the cartesian 2D topology
   MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, TRUE, GridComm);
   MPI_Comm_rank(*GridComm, &(info->rank));
   MPI_Cart_coords(*GridComm, info->rank, ndims, info->coords);
-  MPI_Cart_shift(*GridComm, 0, 1, &(info->up), &(info->down));
-  MPI_Cart_shift(*GridComm, 1, 1, &(info->left), &(info->right));
-  printf("Rank = %d, coords = (%d, %d).\n"
-         "Neighbords: left = %d, right = %d, up = %d, down = %d.\n",
-         info->rank, info->coords[0], info->coords[1], info->left, info->right, info->up, info->down); 
+  // Get process start and end points, local domain size
+  info->start[0] = MIN(rx, info->coords[0]) * (info->m + 1) + MAX(0, (info->coords[0] - rx)) * info->m;
+  info->start[1] = MIN(ry, info->coords[1]) * (info->n + 1) + MAX(0, (info->coords[1] - ry)) * info->n;
+  info->end[0] = info->start[0] + info->m + (info->coords[0] < rx ? 1 : 0);
+  info->end[1] = info->start[1] + info->n + (info->coords[1] < ry ? 1 : 0);
+  info->n = info->end[0] - info->start[0];
+  info->m = info->end[1] - info->start[1];
+  // Get process neighbors
+  MPI_Cart_shift(*GridComm, 1, -1, &(info->up), &(info->down));
+  MPI_Cart_shift(*GridComm, 0, 1, &(info->left), &(info->right));
+#ifdef debug_decomp_print
+  printf("******************************************************\n"
+         "Rank = %d, coords = (%d, %d).\n"
+         "Local domain size = %d x %d.\n"
+         "Neighbords: left = %d, right = %d, up = %d, down = %d.\n"
+         "Start coords = (%d, %d), end coords = (%d, %d).\n",
+         info->rank, info->coords[0], info->coords[1], 
+         info->m, info->n, 
+         info->left, info->right, info->up, info->down,
+         info->start[0], info->start[1], info->end[0], info->end[1]); 
+#endif
 }
 
 int main(int argc, char **argv) {
@@ -237,7 +321,7 @@ int main(int argc, char **argv) {
   MPI_Comm GridComm;
   ProcInfo_t info;
   MPI_Init(&argc, &argv); 
-  domain_decomposition(&GridComm, &info);
+  domain_decomposition(M, N, &GridComm, &info);
 /*  double** w = (double**)malloc((M + 1) * sizeof(double*));
   for (size_t i = 0; i <= M; ++i)
       w[i] = (double*)malloc((N + 1) * sizeof(double));
