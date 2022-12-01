@@ -9,6 +9,23 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
+enum ProcLocation {
+  LOC_NONE = 0,           // 0
+  LOC_INNER,              // 1 
+  LOC_INNER_BOT,          // 2
+  LOC_INNER_TOP,          // 3
+  LOC_INNER_LEFT,         // 4
+  LOC_INNER_RIGHT,        // 5
+  LOC_CORNER_BOTLEFT,     // 6
+  LOC_CORNER_BOTRIGHT,    // 7
+  LOC_CORNER_TOPLEFT,     // 8
+  LOC_CORNER_TOPRIGHT,    // 9
+  LOC_CUP,                // 10
+  LOC_CAP,                // 11
+  LOC_GLOBAL,             // 12
+};
+typedef enum ProcLocation ProcLocation_t;
+
 // Structure which contains process location info and neighbors
 struct ProcInfo {
   // Process rank
@@ -23,6 +40,8 @@ struct ProcInfo {
   // start[0] <= points[i] < end[0]
   // start[1] <= points[j] < end[1]
   int start[2], end[2];
+  // Procces location type
+  ProcLocation_t proc_loc;
 };
 typedef struct ProcInfo ProcInfo_t;
 
@@ -68,62 +87,108 @@ double psi(double x, double y) {
 }
 
 // Grid coefficients.
-
-double a(size_t i, size_t j, double h1, double h2) {
-  return k(i * h1 - 0.5 * h1, j * h2);
+// gi and gj means global i and global j in all code
+double a(size_t gi, size_t gj, double h1, double h2) {
+  return k(gi * h1 - 0.5 * h1, gj * h2);
 }
 
-double b(size_t i, size_t j, double h1, double h2) {
-  return k(i * h1, j * h2 - 0.5 * h2);
+double b(size_t gi, size_t gj, double h1, double h2) {
+  return k(gi * h1, gj * h2 - 0.5 * h2);
 }
 
 // Right and left difference partial derivatives.
+// li and lj means local i and local i in all code
 
-double right_dx(double** v, size_t i, size_t j, double h1) {
-  return (v[i + 1][j] - v[i][j]) / h1;
+double right_dx(double** v, size_t li, size_t lj, double h1) {
+  return (v[li + 1][lj] - v[li][lj]) / h1;
 }
 
-double left_dx(double** v, size_t i, size_t j, double h1) {
-  return (v[i][j] - v[i - 1][j]) / h1;
+double left_dx(double** v, size_t li, size_t lj, double h1) {
+  return (v[li][lj] - v[li - 1][lj]) / h1;
 }
 
-double right_dy(double** v, size_t i, size_t j, double h2) {
-  return (v[i][j + 1] - v[i][j]) / h2;
+double right_dy(double** v, size_t li, size_t lj, double h2) {
+  return (v[li][lj + 1] - v[li][lj]) / h2;
 }
 
-double left_dy(double** v, size_t i, size_t j, double h2) {
-  return (v[i][j] - v[i][j - 1]) / h2;
+double left_dy(double** v, size_t li, size_t lj, double h2) {
+  return (v[li][lj] - v[li][lj - 1]) / h2;
 }
 
 // Laplace operator.
 
-double left_delta(double** w, size_t i, size_t j, double h1, double h2) {
-  return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * right_dx(w, i, j, h1) - a(i, j, h1,
-      h2) * left_dx(w, i, j, h1));
+double left_delta(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, double h2) {
+  return (1.0 / h1) * (k(gi * h1 + 0.5 * h1, gj * h2) * right_dx(w, li, lj, h1) - a(gi, gj, h1, h2) * left_dx(w, li, lj, h1));
 }
 
-double right_delta(double** w, size_t i, size_t j, double h1, double h2) {
-  return (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * right_dy(w, i, j, h2) - b(i, j,
-      h1, h2) * left_dy(w, i, j, h2));
+double right_delta(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, double h2) {
+  return (1.0 / h2) * (k(gi * h1, gj * h2 + 0.5 * h2) * right_dy(w, li, lj, h2) - b(gi, gj, h1, h2) * left_dy(w, li, lj, h2));
 }
 
-double laplace_operator(double** w, size_t i, size_t j, double h1, double h2) {
-  return left_delta(w, i, j, h1, h2) + right_delta(w, i, j, h1, h2);
+double laplace_operator(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, double h2) {
+  return left_delta(w, li, lj, gi, gj, h1, h2) + right_delta(w, li, lj, gi, gj, h1, h2);
 }
 
 // Fill B (right part of Aw = B).
 
-void fill_B(double** B, size_t M, size_t N, double h1, double h2) {
+void fill_B(double** B, size_t M, size_t N, double h1, double h2, ProcInfo_t *info) {
+  // Local iteration variables for position in local domain grid of proc
+  size_t li, lj;
+  // Global iteration variables for position in global domain grid
+  size_t gi, gj;
   // Internal grid points. 
-  for (size_t i = 1; i < M; ++i) {
-      for (size_t j = 1; j < N; ++j) {
-          B[i][j] = F(i * h1, j * h2);
-      }
+/*  if (info->start[0] != 0 && info->end[0] - 1 != M &&
+      info->start[1] != 0 && info->end[1] - 1 != N) {
+    for (li = 1; li < info->m + 1; ++li) {
+        gi = info->start[0] + li - 1;
+        for (lj = 1; lj < info->n + 1; ++lj) {
+            gj = info->start[1] + lj - 1;
+            B[li][lj] = F(gi * h1, gj * h2);
+        }
+    }
   }
-  // Bottom and top grid points.
+  // Inner bottom grid points.
+  if (info->start[0] != 0 && info->start[1] == 0 && 
+      info->end[0] - 1 != M && info->end[1] - 1 != N) {
+    // Internal grid points in local domain which connected with bottom
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1; 
+        B[lj][lj] = F(gi * h1, gj * h2);
+      } 
+    }
+    // Bottom grid points in local domain wich connected with bottom
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      B[li][1] = F(gi * h1, 0) + (2.0 / h2) * psi(gi * h1, 0); 
+    }
+  }
+  // Inner top grid points.
+  if (info->start[0] != 0 && info->start[1] != 0 &&
+      info->end[0] - 1 != M && info->end[1] - 1 == N) {
+    // Internal grid points in local domain which connected with top
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        B[lj][lj] = F(gi * h1, gj * h2);
+      } 
+    }
+    // Top grid points in local domain which connected with top
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      B[li][info->n] = phi(gi * h1, N * h2);
+    }
+  }
+  // Bottom and top
   for (size_t i = 1; i < M; ++i) {
       B[i][0] = F(i * h1, 0) + (2.0 / h2) * psi(i * h1, 0);
       B[i][N] = phi(i * h1, N * h2);
+  }
+  //Inner left grid points.
+  if () {
+
   }
   // Left and right grid points.
   for (size_t j = 1; j < N; ++j) {
@@ -134,7 +199,7 @@ void fill_B(double** B, size_t M, size_t N, double h1, double h2) {
   B[0][0] = phi(0, 0);
   B[M][0] = phi(M * h1, 0);
   B[0][N] = phi(0, N * h2);
-  B[M][N] = phi(M * h1, N * h2);
+  B[M][N] = phi(M * h1, N * h2); */
 }
 
 // Weight functions for dot product.
@@ -171,7 +236,7 @@ double norm(double** u, double h1, double h2, size_t M, size_t N) {
   return sqrt(dot_product(u, u, h1, h2, M, N));
 }
 
-// (aw_~x)_ij
+/*// (aw_~x)_ij
 
 double aw(double** w, size_t i, size_t j, double h1, double h2) {
   return k(i * h1 - 0.5 * h1, j * h2) * left_dx(w, i, j, h1);
@@ -207,8 +272,8 @@ void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
   r[0][0] = w[0][0];
   r[M][0] = w[M][0];
   r[0][N] = w[0][N];
-  r[M][N] = w[M][N];
-}
+  r[M][N] = w[M][N]; 
+} */
 
 // Let num = 2^power, that function returns the power
 // else return -1
@@ -277,9 +342,9 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
   // Find dims[0] = 2^px and dims[1] = 2^py
   dims[0] = (unsigned int)1 << px; dims[1] = (unsigned int)1 << py;
   // Find local domain size: m = M/(2^px), n = N/(2^py) 
-  info->m = (M+1) >> px; info->n = (N+1) >> py;
-  int rx = M+1 - dims[0] * info->m;
-  int ry = N+1 - dims[1] * info->n;
+  info->m = (M + 1) >> px; info->n = (N+1) >> py;
+  int rx = M + 1 - dims[0] * info->m;
+  int ry = N + 1 - dims[1] * info->n;
   // Create the cartesian 2D topology
   MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, TRUE, GridComm);
   MPI_Comm_rank(*GridComm, &(info->rank));
@@ -291,6 +356,51 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
   info->end[1] = info->start[1] + info->n + (info->coords[1] < ry ? 1 : 0);
   info->n = info->end[0] - info->start[0];
   info->m = info->end[1] - info->start[1];
+  // Find process location type
+  if (info->start[0] != 0 && info->end[0] - 1 != M &&
+      info->start[1] != 0 && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_INNER;
+  } else if (info->start[0] != 0 && info->start[1] == 0 &&
+             info->end[0] - 1 != M && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_INNER_BOT;
+  } else if (info->start[0] != 0 && info->start[1] != 0 &&
+             info->end[0] - 1 != M && info->end[1] - 1 == N) {
+    info->proc_loc = LOC_INNER_TOP;
+  } else if (info->start[0] == 0 && info->start[1] != 0 &&
+             info->end[0] - 1 != M && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_INNER_LEFT;
+  } else if (info->start[0] != 0 && info->start[1] != 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1!= N) {
+    info->proc_loc = LOC_INNER_RIGHT;
+  } else if (info->start[0] == 0 && info->start[1] == 0 &&
+             info->end[0] - 1 != M && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_CORNER_BOTLEFT;
+  } else if (info->start[0] != 0 && info->start[1] == 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_CORNER_BOTRIGHT;
+  } else if (info->start[0] == 0 && info->start[1] != 0 &&
+             info->end[0] - 1 != M && info->end[1] - 1 == N) {
+    info->proc_loc = LOC_CORNER_TOPLEFT;
+  } else if (info->start[0] != 0 && info->start[1] != 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1 == N) {
+    info->proc_loc = LOC_CORNER_TOPRIGHT;
+  } else if (info->start[0] == 0 && info->start[1] == 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1 != N) {
+    info->proc_loc = LOC_CUP;
+  } else if (info->start[0] == 0 && info->start[1] != 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1 == N) {
+    info->proc_loc = LOC_CAP;
+  } else if (info->start[0] == 0 && info->start[1] == 0 &&
+             info->end[0] - 1 == M && info->end[1] - 1 == N) {
+    info->proc_loc = LOC_GLOBAL;
+  } else {
+    info->proc_loc = LOC_NONE;
+  }
+  if (info->proc_loc == LOC_NONE) {
+    fprintf(stderr, "The process with rank = %d cant find its location type!\n", info->rank);
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+  } 
   // Get process neighbors
   MPI_Cart_shift(*GridComm, 1, -1, &(info->up), &(info->down));
   MPI_Cart_shift(*GridComm, 0, 1, &(info->left), &(info->right));
@@ -299,11 +409,13 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
          "Rank = %d, coords = (%d, %d).\n"
          "Local domain size = %d x %d.\n"
          "Neighbords: left = %d, right = %d, up = %d, down = %d.\n"
-         "Start coords = (%d, %d), end coords = (%d, %d).\n",
+         "Start coords = (%d, %d), end coords = (%d, %d).\n"
+         "Process location type = %d.\n",
          info->rank, info->coords[0], info->coords[1], 
          info->m, info->n, 
          info->left, info->right, info->up, info->down,
-         info->start[0], info->start[1], info->end[0], info->end[1]); 
+         info->start[0], info->start[1], info->end[0], info->end[1],
+         info->proc_loc); 
 #endif
 }
 
