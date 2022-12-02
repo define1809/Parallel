@@ -597,6 +597,34 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
 #endif
 }
 
+void print_matrix(double **w, ProcInfo_t *info) {
+  for (size_t lj = info->n; lj >= 1; --lj) {
+    printf("rank = %d ", info->rank);
+    for (size_t li = 1; li < info->m + 1; ++li) {
+      printf("%lf ", w[li][lj]);
+    }
+    printf("\n");
+  }  
+  printf("\n");
+}
+
+void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
+  const double eps = 1e-6;
+  const double h1 = 4.0 / (double) M;
+  const double h2 = 3.0 / (double) N;
+  double tau = 0.0;
+  double **B = (double**) malloc((info->m + 2) * sizeof(double*));
+  for (size_t i = 0; i < info->m + 2; ++i)
+    B[i] = (double*) malloc((info->n + 2) * sizeof(double));
+  fill_B(B, M, N, h1, h2, info);
+#ifdef debug_B_print
+  print_matrix(B, info); 
+#endif
+  for (size_t i = 0; i < info->m + 2; ++i)
+    free(B[i]); 
+  free(B);
+}
+
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "Not enought arguments!\n");
@@ -604,10 +632,6 @@ int main(int argc, char **argv) {
   }
   const size_t M = atoi(argv[1]);
   const size_t N = atoi(argv[2]);
-  const double eps = 1e-6;
-  const double h1 = 4.0 / (double)M;
-  const double h2 = 3.0 / (double)N;
-  double tau = 0.0;
   MPI_Comm GridComm;
   ProcInfo_t info;
   MPI_Init(&argc, &argv); 
@@ -624,21 +648,7 @@ int main(int argc, char **argv) {
   double** Ar = (double**)malloc((M + 1) * sizeof(double*));
   for (size_t i = 0; i <= M; ++i)
       Ar[i] = (double*)malloc((N + 1) * sizeof(double)); */
-  double** B = (double**)malloc((info.m + 2) * sizeof(double*));
-  for (size_t i = 0; i < info.m + 2; ++i)
-      B[i] = (double*)malloc((info.n + 2) * sizeof(double));
-  fill_B(B, M, N, h1, h2, &info); 
-  for (size_t li = 1; li < info.m + 1; ++li) {
-    printf("rank = %d ", info.rank);
-    for (size_t lj = 1; lj < info.n + 1; ++lj) {
-      printf("%lf ", B[li][lj]);
-    }
-    printf("\n");
-  }
-  printf("\n");
-  for (size_t i = 0; i < info.m + 2; ++i)
-    free(B[i]);
-  free(B); 
+  solve(M, N, &GridComm, &info);
 /*  double** u_arr = (double**)malloc((M + 1) * sizeof(double*));
   for (size_t i = 0; i <= M; ++i)
       u_arr[i] = (double*)malloc((N + 1) * sizeof(double));
