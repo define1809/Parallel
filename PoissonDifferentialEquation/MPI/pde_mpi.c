@@ -415,8 +415,7 @@ double dot_product(double** u, double** v, double h1, double h2, size_t M, size_
 
 // Norm (||u|| = sqrt(u*u)).
 
-double norm(double** u, double h1, double h2, size_t M, size_t N, MPI_Comm
-*GridComm, ProcInfo_t *info) {
+double norm(double** u, double h1, double h2, size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
   return sqrt(dot_product(u, u, h1, h2, M, N, GridComm, info));
 }
 
@@ -434,7 +433,7 @@ double bw(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, dou
 
 // Left part of Aw = B
 // r = Aw
-// TODO: MPI 
+
 void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
   // Local iteration variables for position in local domain grid of proc
   size_t li, lj;
@@ -442,8 +441,203 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
   size_t gi, gj;
   // Fill domains of Aw
   switch (info->proc_loc) {
-  // TODO: another proc loc types
-  case LOC_GLOBAL:
+  case LOC_INNER:
+    // Internal grid points of inner domain
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1; 
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    break;
+  case LOC_INNER_BOT:
+    // Internal grid points in domain which connected with bottom 
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }  
+    // Bottom grid points in domain which connected with bottom
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
+    }
+    break;
+  case LOC_INNER_TOP:
+    // Internal grid points in domain which connected with top
+    for (li = 1; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Top grid points in domain which connected with top
+    for (li = 1; li < info->m + 1; ++li) {
+      r[li][info->n] = w[li][info->n];
+    }
+    break;
+  case LOC_INNER_LEFT:
+    // Internal grid points in domain which connected with left
+    for (li = 2; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Left grid points in domain which connected with left
+    for (lj = 1; lj < info->n + 1; ++lj) {
+      r[1][lj] = w[1][lj];
+    }
+    break;
+  case LOC_INNER_RIGHT:
+    // Internal grid points in domain which connected with right
+    for (li = 1; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1; 
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Right grid points in domain which connected with right
+    for (lj = 1; lj < info->n + 1; ++lj) {
+      r[info->m][lj] = w[info->m][lj];
+    }
+    break;
+  case LOC_CORNER_BOTLEFT:
+    // Internal grid points in corner bot-left domain
+    for (li = 2; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Bottom grid points in corner bot-left domain
+    for (li = 2; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
+    }
+    // Left grid points in corner bot-left domain
+    for (lj = 2; lj < info->n + 1; ++lj) {
+      r[1][lj] = w[1][lj];
+    }
+    // Bot-left corner
+    r[1][1] = w[1][1];
+    break;
+  case LOC_CORNER_BOTRIGHT:
+    // Internal grid points in corner bot-right domain
+    for (li = 1; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Bottom grid points in corner bot-right domain
+    for (li = 1; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
+    }
+    // Right grid points in corner bot-right domain
+    for (lj = 2; lj < info->n + 1; ++lj) {
+      r[info->m][lj] = w[info->m][lj];
+    }
+    // Bot-right corner
+    r[info->m][1] = w[info->m][1];  
+    break;
+  case LOC_CORNER_TOPLEFT:
+    // Internal grid points in corner top-left domain
+    for (li = 2; li < info->m + 1; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Top grid points in corner top-left domain
+    for (li = 2; li < info->m + 1; ++li) {
+      r[li][info->n] = w[li][info->n];
+    }
+    // Left grid points in corner top-left domain
+    for (lj = 1; lj < info->n; ++lj) {
+      r[1][lj] = w[1][lj];
+    } 
+    // Top-left corner
+    r[1][info->n] = w[1][info->n];
+    break;
+  case LOC_CORNER_TOPRIGHT:
+    // Internal grid point in corner top-right domain
+    for (li = 1; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Top grid points in corner top-right domain
+    for (li = 1; li < info->m; ++li) {
+      r[li][info->n] = w[li][info->n];
+    }
+    // Right grid points in corner top-right domain
+    for (lj = 1; lj < info->n; ++lj) {
+      r[info->m][lj] = w[info->m][lj];
+    }
+    // Top-right corner
+    r[info->m][info->n] = w[info->m][info->n];
+    break;
+  case LOC_CUP:
+    // Internal grid points in CUP-shaped domain
+    for (li = 2; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n + 1; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Bottom grid points in CUP-shaped domain
+    for (li = 2; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
+    }
+    // Left and right grid points in CUP-shaped domain
+    for (lj = 2; lj < info->n + 1; ++lj) {
+      r[1][lj] = w[1][lj];
+      r[info->m][lj] = w[info->m][lj];
+    }
+    // Bot-left corner
+    r[1][1] = w[1][1];
+    // Bot-right corner
+    r[info->m][1] = w[info->m][1];
+    break;
+  case LOC_CAP:
+    // Internal grid points in CAP-shaped domain
+    for (li = 2; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 1; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj]; 
+      }
+    }
+    // Top grid points in CAP-shaped domain
+    for (li = 2; li < info->m; ++li) {
+      r[li][info->n] = w[li][info->n];
+    }
+    // Left and right grid points in CAP-shaped domain
+    for (lj = 1; lj < info->n; ++lj) {
+      r[1][lj] = w[1][lj];
+      r[info->m][lj] = w[info->m][lj];
+    }
+    // Top-left corner
+    r[1][info->n] = w[1][info->n];
+    // Top-right corner
+    r[info->m][info->n] = w[info->m][info->n];
+    break;
+case LOC_GLOBAL:
     // Internal grid points in global domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
@@ -452,7 +646,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
         r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj];
       }
     }
-    // rhsottom and top grid points in global domain
+    // Bottom and top grid points in global domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
@@ -460,7 +654,6 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     }
     // Left and right grid points in global domain
     for (lj = 1; lj < info->n; ++lj) {
-      gj = info->start[1] + lj - 1;
       r[1][lj] = w[1][lj];
       r[info->m][lj] = w[info->m][lj];
     }
