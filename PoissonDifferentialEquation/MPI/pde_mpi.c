@@ -35,11 +35,11 @@ struct ProcInfo {
   // Ranks of the neighbors of the process
   int left, right, up, down;
   // Process local domain size
-  int m, n;
+  size_t m, n;
   // Process global domain start and end point
   // start[0] <= points[i] < end[0]
   // start[1] <= points[j] < end[1]
-  int start[2], end[2];
+  size_t start[2], end[2];
   // Procces location type
   ProcLocation_t proc_loc;
 };
@@ -130,8 +130,8 @@ double laplace_operator(double** w, size_t li, size_t lj, size_t gi, size_t gj, 
 }
 
 // Fill B (right part of Aw = B).
-
-void fill_B(double** B, size_t M, size_t N, double h1, double h2, ProcInfo_t *info) {
+// TODO: rename RHS
+void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
   // Local iteration variables for position in local domain grid of proc
   size_t li, lj;
   // Global iteration variables for position in global domain grid
@@ -382,81 +382,102 @@ void fill_B(double** B, size_t M, size_t N, double h1, double h2, ProcInfo_t *in
 
 // Weight functions for dot product.
 
-double rho_x(size_t i, size_t M) {
-  return (i >= 1 && i <= M - 1) ? 1.0 : 0.5;
+static double rho_x(size_t gi, size_t M) {
+  return (gi >= 1 && gi <= M - 1) ? 1.0 : 0.5;
 }
 
-double rho_y(size_t j, size_t N) {
-  return (j >= 1 && j <= N - 1) ? 1.0 : 0.5;
+static double rho_y(size_t gj, size_t N) {
+  return (gj >= 1 && gj <= N - 1) ? 1.0 : 0.5;
 }
 
-double rho(size_t i, size_t j, size_t M, size_t N) {
-  return rho_x(i, M) * rho_y(j, N);
+static double rho(size_t gi, size_t gj, size_t M, size_t N) {
+  return rho_x(gi, M) * rho_y(gj, N);
 }
 
 // Dot product (u*v).
-
-double dot_product(double** u, double** v, double h1, double h2, size_t M, size_t N) {
+// TODO: MPI_Allreduce
+double dot_product(double** u, double** v, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+  size_t li, lj, gi, gj;
   double sum = 0.0;
-  for (size_t i = 0; i <= M; ++i) {
-      double tmp_sum = 0.0;
-      for (size_t j = 0; j <= N; ++j) {
-          tmp_sum += h2 * rho(i, j, M, N) * u[i][j] * v[i][j];
-      }
-      sum += h1 * tmp_sum;
+  for (li = 1; li < info->m + 1; ++li) {
+    gi = info->start[0] + li - 1; 
+    double tmp_sum = 0.0;
+    for (lj = 1; lj < info->n + 1; ++lj) {
+      gj = info->start[1] + lj - 1;  
+      tmp_sum += h2 * rho(gi, gj, M, N) * u[li][lj] * v[li][lj];
+    }
+    sum += h1 * tmp_sum;
   }
   return sum;
 }
 
 // Norm (||u|| = sqrt(u*u)).
 
-double norm(double** u, double h1, double h2, size_t M, size_t N) {
-  return sqrt(dot_product(u, u, h1, h2, M, N));
+double norm(double** u, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+  return sqrt(dot_product(u, u, h1, h2, M, N, info));
 }
 
-/*// (aw_~x)_ij
+// (aw_~x)_ij
 
-double aw(double** w, size_t i, size_t j, double h1, double h2) {
-  return k(i * h1 - 0.5 * h1, j * h2) * left_dx(w, i, j, h1);
+double aw(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, double h2) {
+  return k(gi * h1 - 0.5 * h1, gj * h2) * left_dx(w, li, lj, h1);
 }
 
 // (bw_~y)_ij
 
-double bw(double** w, size_t i, size_t j, double h1, double h2) {
-  return k(i * h1, j * h2 - 0.5 * h2) * left_dy(w, i, j, h2);
+double bw(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, double h2) {
+  return k(gi * h1, gj * h2 - 0.5 * h2) * left_dy(w, li, lj, h2);
 }
 
 // Fill Aw (left part of Aw = B).
 // r = Aw.
-
-void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
-  // Internal grid points.
-  for (size_t i = 1; i < M; ++i) {
-      for (size_t j = 1; j < N; ++j) {
-          r[i][j] = -laplace_operator(w, i, j, h1, h2) + q(i * h1, j * h2) * w[i][j];
+// TODO: MPI and rename LHS
+void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+  // Local iteration variables for position in local domain grid of proc
+  size_t li, lj;
+  // Global iteration variables for position on global domain grid
+  size_t gi, gj;
+  // Fill domains of Aw
+  switch(info->proc_loc) {
+  // TODO: another proc loc types
+  case LOC_GLOBAL:
+    // Internal grid points in global domain
+    for (li = 2; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      for (lj = 2; lj < info->n; ++lj) {
+        gj = info->start[1] + lj - 1;
+        r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj];
       }
+    }
+    // Bottom and top grid points in global domain
+    for (li = 2; li < info->m; ++li) {
+      gi = info->start[0] + li - 1;
+      r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
+      r[li][info->n] = w[li][info->n];
+    }
+    // Left and right grid points in global domain
+    for (lj = 1; lj < info->n; ++lj) {
+      gj = info->start[1] + lj - 1;
+      r[1][lj] = w[1][lj];
+      r[info->m][lj] = w[info->m][lj];
+    }
+    // Corner grid points
+    r[1][1] = w[1][1];
+    r[info->m][1] = w[info->m][1];
+    r[1][info->n] = w[1][info->n];
+    r[info->m][info->n] = w[info->m][info->n]; 
+    break;
+  default:
+    fprintf(stderr, "[Rank %d]: Cant fill Aw: unkown location type!\n", info->rank);
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
   }
-  // Bottom and top grid points.
-  for (size_t i = 1; i < M; ++i) {
-      r[i][0] = -(2.0 / h2) * bw(w, i, 1, h1, h2) + (q(i * h1, 0) + 2.0 / h1) * w[i][0] - left_delta(w, i, 0, h1, h2);
-      r[i][N] = w[i][N];
-  }
-  // Left and right grid points.
-  for (size_t j = 1; j < N; ++j) {
-      r[0][j] = w[0][j];
-      r[M][j] = w[M][j];
-  }
-  // Corner grid points.
-  r[0][0] = w[0][0];
-  r[M][0] = w[M][0];
-  r[0][N] = w[0][N];
-  r[M][N] = w[M][N]; 
-} */
+} 
 
 // Let num = 2^power, that function returns the power
 // else return -1
 
-int get_power(int num) {
+static int get_power(int num) {
   if (num <= 0)
     return -1;
   int power = 0;
@@ -471,7 +492,7 @@ int get_power(int num) {
 
 // Returns px, where px is dims[0] = 2^px
 
-int split(size_t M, size_t N, int power) {
+static int split(size_t M, size_t N, int power) {
   double m = (double)M;
   double n = (double)N;
   int px = 0;
@@ -597,6 +618,13 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
 #endif
 }
 
+// Exchange of boundaries between neighboring processes
+// TODO: this funtion
+
+void exchange(MPI_Comm *GridComm, ProcInfo_t *info) {
+  
+}
+
 void print_matrix(double **w, ProcInfo_t *info) {
   for (size_t lj = info->n; lj >= 1; --lj) {
     printf("rank = %d ", info->rank);
@@ -609,20 +637,88 @@ void print_matrix(double **w, ProcInfo_t *info) {
 }
 
 void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
+  size_t li, lj, gi, gj;
+  size_t iteration = 0;
   const double eps = 1e-6;
   const double h1 = 4.0 / (double) M;
   const double h2 = 3.0 / (double) N;
   double tau = 0.0;
+  //TODO: rename LHS, RHS, Solution
   double **B = (double**) malloc((info->m + 2) * sizeof(double*));
-  for (size_t i = 0; i < info->m + 2; ++i)
-    B[i] = (double*) malloc((info->n + 2) * sizeof(double));
-  fill_B(B, M, N, h1, h2, info);
+  double **w = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **tmp_w = (double**)malloc((info->m + 2) * sizeof(double*));
+  double **r = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **Ar = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **u_arr = (double**) malloc((info->m + 2) * sizeof(double*));
+  for (size_t i = 0; i < info->m + 2; ++i) { 
+    B[i] = (double*) calloc((info->n + 2), sizeof(double));
+    w[i] = (double*) calloc((info->n + 2), sizeof(double));
+    tmp_w[i] = (double*) calloc((info->n + 2), sizeof(double));
+    r[i] = (double*) calloc((info->n + 2), sizeof(double));
+    Ar[i] = (double*) calloc((info->n + 2), sizeof(double));
+    u_arr[i] = (double*) calloc((info->n + 2) , sizeof(double));
+  }
+  for (li = 1; li < info->m + 1; ++li) {
+    gi = info->start[0] + li - 1;
+    for (lj = 1; lj < info->n + 1; ++lj) {
+      gj = info->start[1] + lj - 1; 
+      u_arr[li][lj] = u(gi * h1, gj * h2);
+    }
+  }
+  fill_B(B, h1, h2, M, N, info);
 #ifdef debug_B_print
   print_matrix(B, info); 
 #endif
-  for (size_t i = 0; i < info->m + 2; ++i)
+  while (TRUE) {
+#ifdef debug_solve_print
+    printf("Iteration: %lu\n", iteration++);
+#endif
+    fill_Aw(w, r, h1, h2, M, N, info);    
+    for (li = 1; li < info->m + 1; ++li) {
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        r[li][lj] -= B[li][lj];
+        tmp_w[li][lj] = w[li][lj];
+      }
+    }  
+    fill_Aw(r, Ar, h1, h2, M, N, info);
+    tau = dot_product(Ar, r, h1, h2, M, N, info) / pow(norm(Ar, h1, h2, M, N, info), 2.0);
+    for (li = 1; li < info->m + 1; ++li) {
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        w[li][lj] = w[li][lj] - tau * r[li][lj];
+      } 
+    }
+    for (li = 1; li < info->m + 1; ++li) {
+      for (lj = 1; lj < info->n + 1; ++lj) {
+        tmp_w[li][lj] = w[li][lj] - tmp_w[li][lj];
+      }
+    }
+  double diff = norm(tmp_w, h1, h2, M, N, info);
+#ifdef debug_solve_print
+  printf("Diff: %lf\n", diff);
+#endif
+  if (diff < eps)
+    break;
+  }
+  printf("%lu,%lu\n", M, N);
+  for (li = 1; li < info->m + 1; ++li) {
+    for (lj = 1; lj < info->n + 1; ++lj) {
+      printf("%lf,%lf\n", u_arr[li][lj], w[li][lj]);
+    }
+  }
+  for (size_t i = 0; i < info->m + 2; ++i) {
     free(B[i]); 
+    free(w[i]);
+    free(tmp_w[i]);
+    free(r[i]);
+    free(Ar[i]);
+    free(u_arr[i]);
+  }
   free(B);
+  free(w);
+  free(tmp_w);
+  free(r);
+  free(Ar);
+  free(u_arr);
 }
 
 int main(int argc, char **argv) {
@@ -630,68 +726,22 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Not enought arguments!\n");
     return 1;
   }
+  // Grid:
+  // Ox : 0..M
+  // Oy : 0..N
+  // Where M, N are numbers of internal points
   const size_t M = atoi(argv[1]);
   const size_t N = atoi(argv[2]);
+  // MPI handler of grid
   MPI_Comm GridComm;
+  // Current process information
   ProcInfo_t info;
+  // MPI lib init
   MPI_Init(&argc, &argv); 
+  // Performe domain decomposition 
   domain_decomposition(M, N, &GridComm, &info);
-/*  double** w = (double**)malloc((M + 1) * sizeof(double*));
-  for (size_t i = 0; i <= M; ++i)
-      w[i] = (double*)malloc((N + 1) * sizeof(double));
-  double** tmp_w = (double**)malloc((M + 1) * sizeof(double*));
-  for (size_t i = 0; i <= M; ++i)
-      tmp_w[i] = (double*)malloc((N + 1) * sizeof(double));
-  double** r = (double**)malloc((M + 1) * sizeof(double*));
-  for (size_t i = 0; i <= M; ++i)
-    r[i] = (double*)malloc((N + 1) * sizeof(double));
-  double** Ar = (double**)malloc((M + 1) * sizeof(double*));
-  for (size_t i = 0; i <= M; ++i)
-      Ar[i] = (double*)malloc((N + 1) * sizeof(double)); */
+  // Solve the task
   solve(M, N, &GridComm, &info);
-/*  double** u_arr = (double**)malloc((M + 1) * sizeof(double*));
-  for (size_t i = 0; i <= M; ++i)
-      u_arr[i] = (double*)malloc((N + 1) * sizeof(double));
-  // w^0 = 0
-  for (size_t i = 0; i <= M; ++i)
-      for (size_t j = 0; j <= N; ++j)
-          w[i][j] = 0.0;
-  // Fill B
-  fill_B(B, M, N, h1, h2);
-  // Iterations
-  while (1) {
-      // r^(k) = Aw^(k)
-      fill_Aw(w, r, h1, h2, M, N);
-      // r^(k) = Aw^(k) - B
-      for (size_t i = 0; i <= M; ++i)
-          for (size_t j = 0; j <= N; ++j) {
-              r[i][j] -= B[i][j];
-              tmp_w[i][j] = w[i][j];
-          }
-      // Ar^(k)
-      fill_Aw(r, Ar, h1, h2, M, N);
-      // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
-      tau = dot_product(Ar, r, h1, h2, M, N) / pow(norm(Ar, h1, h2, M, N), 2);
-      //w^(k+1) = w^(k) - tau^(k+1)r^(k)
-      for (size_t i = 0; i <= M; ++i)
-          for (size_t j = 0; j <= N; ++j)
-              w[i][j] = w[i][j] - tau * r[i][j];
-      //tmp_w = w^(k+1) - w^(k)
-      for (size_t i = 0; i <= M; ++i)
-          for (size_t j = 0; j <= N; ++j)
-              tmp_w[i][j] = w[i][j] - tmp_w[i][j];
-      double diff = norm(tmp_w, h1, h2, M, N);
-      //    printf("%lf\n", diff);
-      if (diff < eps)
-          break;
-  }
-  for (size_t i = 0; i <= M; ++i)
-      for (size_t j = 0; j <= N; ++j)
-          u_arr[i][j] = u(i * h1, j * h2);
-  printf("%lu,%lu\n", M, N);
-  for (size_t i = 0; i <= M; ++i)
-      for (size_t j = 0; j <= N; ++j)
-          printf("%lf,%lf\n", u_arr[i][j], w[i][j]); */
   MPI_Finalize();
   return 0;
 }
