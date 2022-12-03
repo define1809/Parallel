@@ -137,7 +137,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
   // Global iteration variables for position in global domain grid
   size_t gi, gj;
   // Fill domains of rhs
-  switch(info->proc_loc) {
+  switch (info->proc_loc) {
   case LOC_INNER:
     // Internal grid points of inner domain
     for (li = 1; li < info->m + 1; ++li) {
@@ -396,8 +396,7 @@ static double rho(size_t gi, size_t gj, size_t M, size_t N) {
 
 // Dot product (u*v).
 
-double dot_product(double** u, double** v, double h1, double h2, size_t M,
-size_t N, MPI_Comm *GridComm,  ProcInfo_t *info) {
+double dot_product(double** u, double** v, double h1, double h2, size_t M, size_t N, MPI_Comm *GridComm,  ProcInfo_t *info) {
   size_t li, lj, gi, gj;
   double local_sum = 0.0;
   double reduced_sum = 0.0;
@@ -442,7 +441,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
   // Global iteration variables for position on global domain grid
   size_t gi, gj;
   // Fill domains of Aw
-  switch(info->proc_loc) {
+  switch (info->proc_loc) {
   // TODO: another proc loc types
   case LOC_GLOBAL:
     // Internal grid points in global domain
@@ -623,10 +622,204 @@ void domain_decomposition(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *in
 }
 
 // Exchange of boundaries between neighboring processes
-// TODO: this funtion
 
-void exchange(MPI_Comm *GridComm, ProcInfo_t *info) {
-  
+void exchange(double **domain, 
+              double *send_up_row, double *recv_up_row, 
+              double *send_down_row, double *recv_down_row,
+              double *send_left_column, double *recv_left_column,
+              double *send_right_column, double *recv_right_column,
+              MPI_Comm *GridComm, ProcInfo_t *info) {
+  MPI_Status Status;
+  // Exhange of boundaries
+  switch (info->proc_loc) {
+  case LOC_INNER:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+  case LOC_INNER_BOT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][info->n] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+   case LOC_INNER_TOP:
+      for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+  case LOC_INNER_LEFT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+  case LOC_INNER_RIGHT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+    }
+    break;
+  case LOC_CORNER_BOTLEFT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+  case LOC_CORNER_BOTRIGHT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+    }
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+    }
+    break;
+  case LOC_CORNER_TOPLEFT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_right_column[j] = domain[info->m][j + 1];
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[info->m + 1][j + 1] = recv_right_column[j];
+    }
+    break;
+  case LOC_CORNER_TOPRIGHT:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+    }
+    for (size_t j = 0; j < info->n; ++j) {  
+      send_left_column[j] = domain[1][j + 1]; 
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+    }
+    for (size_t j = 0; j < info->n; ++j) {
+      domain[0][j + 1] = recv_left_column[j];
+    }
+    break;
+  case LOC_CUP:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_up_row[i] = domain[i + 1][info->n]; 
+    }
+    MPI_Sendrecv(send_up_row, info->m, MPI_DOUBLE, info->up, 0, recv_up_row, info->m, MPI_DOUBLE, info->up, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][info->n + 1] = recv_up_row[i];
+    }
+    break;
+  case LOC_CAP:
+    for (size_t i = 0; i < info->m; ++i) {
+      send_down_row[i] = domain[i + 1][1];
+    }
+    MPI_Sendrecv(send_down_row, info->m, MPI_DOUBLE, info->down, 0, recv_down_row, info->m, MPI_DOUBLE, info->down, 0, *GridComm, &Status);
+    for (size_t i = 0; i < info->m; ++i) {
+      domain[i + 1][0] = recv_down_row[i];
+    }
+    break;
+  case LOC_GLOBAL:
+    // Nothing to do in global domain
+    break;
+  default:
+    fprintf(stderr, "[Rank %d]: Can't excahnge: unknown location type!\n", info->rank); 
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+  }  
 }
 
 void print_matrix(double **w, ProcInfo_t *info) {
@@ -645,11 +838,13 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
 #ifdef debug_solve_print
   size_t iteration = 0;
 #endif
+  // Accurate
   const double eps = 1e-6;
+  // Step
   const double h1 = 4.0 / (double) M;
   const double h2 = 3.0 / (double) N;
+  // Numeric methods variables
   double tau = 0.0;
-  //TODO: rename LHS, RHS, Solution
   double **rhs = (double**) malloc((info->m + 2) * sizeof(double*));
   double **solution = (double**) malloc((info->m + 2) * sizeof(double*));
   double **tmp_solution = (double**)malloc((info->m + 2) * sizeof(double*));
@@ -664,6 +859,16 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
     Ar[i] = (double*) calloc((info->n + 2), sizeof(double));
     exact_solution[i] = (double*) calloc((info->n + 2), sizeof(double));
   }
+  // Buffers for exchange of boundaries between neighboring process
+  double *send_up_row = (double*) malloc(info->m * sizeof(double));
+  double *recv_up_row = (double*) malloc(info->m * sizeof(double));
+  double *send_down_row = (double*) malloc(info->m * sizeof(double));
+  double *recv_down_row = (double*) malloc(info->m * sizeof(double));
+  double *send_left_column = (double*) malloc(info->n * sizeof(double));
+  double *recv_left_column = (double*) malloc(info->n * sizeof(double));
+  double *send_right_column = (double*) malloc(info->n * sizeof(double));
+  double *recv_right_column = (double*) malloc(info->n * sizeof(double));
+  // Fill exact solution
   for (li = 1; li < info->m + 1; ++li) {
     gi = info->start[0] + li - 1;
     for (lj = 1; lj < info->n + 1; ++lj) {
@@ -671,33 +876,50 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
       exact_solution[li][lj] = u(gi * h1, gj * h2);
     }
   }
+  // Calc RHS (Right part of Aw = B)
   calcRHS(rhs, h1, h2, M, N, info);
 #ifdef debug_rhs_print
+  exchange(rhs, 
+           send_up_row, recv_up_row, 
+           send_down_row, recv_down_row, 
+           send_left_column, recv_left_column, 
+           send_right_column, recv_right_column,
+           GridComm, info);
   print_matrix(rhs, info); 
+  MPI_Finalize();
+  exit(0);
 #endif
+  // Iterations
   while (TRUE) {
 #ifdef debug_solve_print
     printf("Iteration: %lu\n", iteration++);
 #endif
+    // r^(k) = Aw^(k) 
     calcLHS(solution, r, h1, h2, M, N, info);    
+    // r^(k) = Aw^(k) - B
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
         r[li][lj] -= rhs[li][lj];
         tmp_solution[li][lj] = solution[li][lj];
       }
     }  
+    // Ar^(k)
     calcLHS(r, Ar, h1, h2, M, N, info);
+    // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
     tau = dot_product(Ar, r, h1, h2, M, N, GridComm, info) / pow(norm(Ar, h1, h2, M, N, GridComm, info), 2.0);
+    // w^(k+1) = w^(k) - tau^(k+1)r^(k)
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
         solution[li][lj] = solution[li][lj] - tau * r[li][lj];
       } 
     }
+    // tmp_w = w^(k+1) - w^(k)
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
         tmp_solution[li][lj] = solution[li][lj] - tmp_solution[li][lj];
       }
     }
+    // diff = ||w^(k+1) - w^(k)||
   double diff = norm(tmp_solution, h1, h2, M, N, GridComm, info);
 #ifdef debug_solve_print
   printf("Diff: %lf\n", diff);
