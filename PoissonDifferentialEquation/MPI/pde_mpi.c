@@ -76,7 +76,7 @@ double F(double x, double y) {
 // Г_R: phi(x, y) = u(x, y)
 // Г_L: phi(x, y) = u(x, y)
 // Г_T: phi(x, y) = u(x, y)
-// Г_B: psi(x, y) = - (x*k(x, y)) / (2*u(x, y)) + sqrt(k(x, y))
+// Г_rhs: psi(x, y) = - (x*k(x, y)) / (2*u(x, y)) + sqrt(k(x, y))
 
 double phi(double x, double y) {
   return u(x, y);
@@ -129,14 +129,14 @@ double laplace_operator(double** w, size_t li, size_t lj, size_t gi, size_t gj, 
   return left_delta(w, li, lj, gi, gj, h1, h2) + right_delta(w, li, lj, gi, gj, h1, h2);
 }
 
-// Fill B (right part of Aw = B).
-// TODO: rename RHS
-void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+// Right part of Aw = rhs
+
+void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
   // Local iteration variables for position in local domain grid of proc
   size_t li, lj;
   // Global iteration variables for position in global domain grid
   size_t gi, gj;
-  // Fill domains of B
+  // Fill domains of rhs
   switch(info->proc_loc) {
   case LOC_INNER:
     // Internal grid points of inner domain
@@ -144,7 +144,7 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1; 
       for (lj = 1; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2); 
+        rhs[li][lj] = F(gi * h1, gj * h2); 
       }
     }
     break;
@@ -154,13 +154,13 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }  
-    // Bottom grid points in domain which connected with bottom
+    // rhsottom grid points in domain which connected with bottom
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
+      rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     break;
   case LOC_INNER_TOP:
@@ -169,13 +169,13 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Top grid points in domain which connected with top
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][info->n] = phi(gi * h1, N * h2);
+      rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     break;
   case LOC_INNER_LEFT:
@@ -184,13 +184,13 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Left grid points in domain which connected with left
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, gj * h2);
+      rhs[1][lj] = phi(0.0, gj * h2);
     }
     break;
   case LOC_INNER_RIGHT:
@@ -199,13 +199,13 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1; 
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Right grid points in domain which connected with right
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[info->m][lj] = phi(M * h1, gj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
     break;
   case LOC_CORNER_BOTLEFT:
@@ -214,21 +214,21 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2); 
+        rhs[li][lj] = F(gi * h1, gj * h2); 
       }
     }
-    // Bottom grid points in corner bot-left domain
+    // rhsottom grid points in corner bot-left domain
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
+      rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Left grid points in corner bot-left domain
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, gj * h2);
+      rhs[1][lj] = phi(0.0, gj * h2);
     }
-    // Bot-left corner
-    B[1][1] = phi(0.0, 0.0);
+    // rhsot-left corner
+    rhs[1][1] = phi(0.0, 0.0);
     break;
   case LOC_CORNER_BOTRIGHT:
     // Internal grid points in corner bot-right domain
@@ -236,21 +236,21 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
-    // Bottom grid points in corner bot-right domain
+    // rhsottom grid points in corner bot-right domain
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
+      rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Right grid points in corner bot-right domain
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[info->m][lj] = phi(M * h1, gj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
-    // Bot-right corner
-    B[info->m][1] = phi(M * h1, 0.0);  
+    // rhsot-right corner
+    rhs[info->m][1] = phi(M * h1, 0.0);  
     break;
   case LOC_CORNER_TOPLEFT:
     // Internal grid points in corner top-left domain
@@ -258,21 +258,21 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Top grid points in corner top-left domain
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][info->n] = phi(gi * h1, N * h2);
+      rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Left grid points in corner top-left domain
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, gj * h2);
+      rhs[1][lj] = phi(0.0, gj * h2);
     } 
     // Top-left corner
-    B[1][info->n] = phi(0.0, N * h2);
+    rhs[1][info->n] = phi(0.0, N * h2);
     break;
   case LOC_CORNER_TOPRIGHT:
     // Internal grid point in corner top-right domain
@@ -280,21 +280,21 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Top grid points in corner top-right domain
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][info->n] = phi(gi * h1, N * h2);
+      rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Right grid points in corner top-right domain
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + li - 1;
-      B[info->m][lj] = phi(M * h1, gj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
     // Top-right corner
-    B[info->m][info->n] = phi(M * h1, N * h2);
+    rhs[info->m][info->n] = phi(M * h1, N * h2);
     break;
   case LOC_CUP:
     // Internal grid points in CUP-shaped domain
@@ -302,24 +302,24 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
-    // Bottom grid points in CUP-shaped domain
+    // rhsottom grid points in CUP-shaped domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
+      rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Left and right grid points in CUP-shaped domain
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, gj * h2);
-      B[info->m][lj] = phi(M * h1, gj * h2);
+      rhs[1][lj] = phi(0.0, gj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
-    // Bot-left corner
-    B[1][1] = phi(0.0, 0.0);
-    // Bot-right corner
-    B[info->m][1] = phi(M * h1, 0.0);
+    // rhsot-left corner
+    rhs[1][1] = phi(0.0, 0.0);
+    // rhsot-right corner
+    rhs[info->m][1] = phi(M * h1, 0.0);
     break;
   case LOC_CAP:
     // Internal grid points in CAP-shaped domain
@@ -327,24 +327,24 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
     // Top grid points in CAP-shaped domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][info->n] = phi(gi * h1, N * h2); 
+      rhs[li][info->n] = phi(gi * h1, N * h2); 
     }
     // Left and right grid points in CAP-shaped domain
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, gj * h2);
-      B[info->m][lj] = phi(M * h1, gj * h2);
+      rhs[1][lj] = phi(0.0, gj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
     // Top-left corner
-    B[1][info->n] = phi(0.0, N * h2);
+    rhs[1][info->n] = phi(0.0, N * h2);
     // Top-right corner
-    B[info->m][info->n] = phi(M * h1, N * h2);
+    rhs[info->m][info->n] = phi(M * h1, N * h2);
     break;
   case LOC_GLOBAL:
     // Internal grid points in global domain
@@ -352,29 +352,29 @@ void fill_B(double** B, double h1, double h2, size_t M, size_t N, ProcInfo_t *in
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n; ++lj) {
         gj = info->start[1] + lj - 1;
-        B[li][lj] = F(gi * h1, gj * h2);
+        rhs[li][lj] = F(gi * h1, gj * h2);
       }
     }
-    // Bottom and top grid points in global domain
+    // rhsottom and top grid points in global domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
-      B[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
-      B[li][info->n] = phi(gi * h1, N * h2);
+      rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
+      rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Left and right grid points in global domain
     for (lj = 2; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
-      B[1][lj] = phi(0.0, lj * h2);
-      B[info->m][lj] = phi(M * h1, gj * h2); 
+      rhs[1][lj] = phi(0.0, lj * h2);
+      rhs[info->m][lj] = phi(M * h1, gj * h2); 
     }
     // Corner grid points
-    B[1][1] = phi(0.0, 0.0);
-    B[info->m][1] = phi(M * h1, 0.0);
-    B[1][info->n] = phi(0.0, N * h2);
-    B[info->m][info->n] = phi(M * h1, N * h2);
+    rhs[1][1] = phi(0.0, 0.0);
+    rhs[info->m][1] = phi(M * h1, 0.0);
+    rhs[1][info->n] = phi(0.0, N * h2);
+    rhs[info->m][info->n] = phi(M * h1, N * h2);
     break;
   default:
-    fprintf(stderr, "[Rank %d]: Cant fill B: unknown location type!\n", info->rank);
+    fprintf(stderr, "[Rank %d]: Cant fill rhs: unknown location type!\n", info->rank);
     MPI_Finalize();
     exit(EXIT_FAILURE);
   }
@@ -395,26 +395,30 @@ static double rho(size_t gi, size_t gj, size_t M, size_t N) {
 }
 
 // Dot product (u*v).
-// TODO: MPI_Allreduce
-double dot_product(double** u, double** v, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+
+double dot_product(double** u, double** v, double h1, double h2, size_t M,
+size_t N, MPI_Comm *GridComm,  ProcInfo_t *info) {
   size_t li, lj, gi, gj;
-  double sum = 0.0;
+  double local_sum = 0.0;
+  double reduced_sum = 0.0;
   for (li = 1; li < info->m + 1; ++li) {
     gi = info->start[0] + li - 1; 
-    double tmp_sum = 0.0;
+    double inner_sum = 0.0;
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;  
-      tmp_sum += h2 * rho(gi, gj, M, N) * u[li][lj] * v[li][lj];
+      inner_sum += h2 * rho(gi, gj, M, N) * u[li][lj] * v[li][lj];
     }
-    sum += h1 * tmp_sum;
+    local_sum += h1 * inner_sum;
   }
-  return sum;
+  MPI_Allreduce(&local_sum, &reduced_sum, 1, MPI_DOUBLE, MPI_SUM, *GridComm); 
+  return reduced_sum;
 }
 
 // Norm (||u|| = sqrt(u*u)).
 
-double norm(double** u, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
-  return sqrt(dot_product(u, u, h1, h2, M, N, info));
+double norm(double** u, double h1, double h2, size_t M, size_t N, MPI_Comm
+*GridComm, ProcInfo_t *info) {
+  return sqrt(dot_product(u, u, h1, h2, M, N, GridComm, info));
 }
 
 // (aw_~x)_ij
@@ -429,10 +433,10 @@ double bw(double** w, size_t li, size_t lj, size_t gi, size_t gj, double h1, dou
   return k(gi * h1, gj * h2 - 0.5 * h2) * left_dy(w, li, lj, h2);
 }
 
-// Fill Aw (left part of Aw = B).
-// r = Aw.
-// TODO: MPI and rename LHS
-void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
+// Left part of Aw = B
+// r = Aw
+// TODO: MPI 
+void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, ProcInfo_t *info) {
   // Local iteration variables for position in local domain grid of proc
   size_t li, lj;
   // Global iteration variables for position on global domain grid
@@ -449,7 +453,7 @@ void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N, P
         r[li][lj] = -laplace_operator(w, li, lj, gi, gj, h1, h2) + q(gi * h1, gj * h2) * w[li][lj];
       }
     }
-    // Bottom and top grid points in global domain
+    // rhsottom and top grid points in global domain
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
@@ -638,61 +642,63 @@ void print_matrix(double **w, ProcInfo_t *info) {
 
 void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
   size_t li, lj, gi, gj;
+#ifdef debug_solve_print
   size_t iteration = 0;
+#endif
   const double eps = 1e-6;
   const double h1 = 4.0 / (double) M;
   const double h2 = 3.0 / (double) N;
   double tau = 0.0;
   //TODO: rename LHS, RHS, Solution
-  double **B = (double**) malloc((info->m + 2) * sizeof(double*));
-  double **w = (double**) malloc((info->m + 2) * sizeof(double*));
-  double **tmp_w = (double**)malloc((info->m + 2) * sizeof(double*));
+  double **rhs = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **solution = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **tmp_solution = (double**)malloc((info->m + 2) * sizeof(double*));
   double **r = (double**) malloc((info->m + 2) * sizeof(double*));
   double **Ar = (double**) malloc((info->m + 2) * sizeof(double*));
-  double **u_arr = (double**) malloc((info->m + 2) * sizeof(double*));
+  double **exact_solution = (double**) malloc((info->m + 2) * sizeof(double*));
   for (size_t i = 0; i < info->m + 2; ++i) { 
-    B[i] = (double*) calloc((info->n + 2), sizeof(double));
-    w[i] = (double*) calloc((info->n + 2), sizeof(double));
-    tmp_w[i] = (double*) calloc((info->n + 2), sizeof(double));
+    rhs[i] = (double*) calloc((info->n + 2), sizeof(double));
+    solution[i] = (double*) calloc((info->n + 2), sizeof(double));
+    tmp_solution[i] = (double*) calloc((info->n + 2), sizeof(double));
     r[i] = (double*) calloc((info->n + 2), sizeof(double));
     Ar[i] = (double*) calloc((info->n + 2), sizeof(double));
-    u_arr[i] = (double*) calloc((info->n + 2) , sizeof(double));
+    exact_solution[i] = (double*) calloc((info->n + 2), sizeof(double));
   }
   for (li = 1; li < info->m + 1; ++li) {
     gi = info->start[0] + li - 1;
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1; 
-      u_arr[li][lj] = u(gi * h1, gj * h2);
+      exact_solution[li][lj] = u(gi * h1, gj * h2);
     }
   }
-  fill_B(B, h1, h2, M, N, info);
-#ifdef debug_B_print
-  print_matrix(B, info); 
+  calcRHS(rhs, h1, h2, M, N, info);
+#ifdef debug_rhs_print
+  print_matrix(rhs, info); 
 #endif
   while (TRUE) {
 #ifdef debug_solve_print
     printf("Iteration: %lu\n", iteration++);
 #endif
-    fill_Aw(w, r, h1, h2, M, N, info);    
+    calcLHS(solution, r, h1, h2, M, N, info);    
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
-        r[li][lj] -= B[li][lj];
-        tmp_w[li][lj] = w[li][lj];
+        r[li][lj] -= rhs[li][lj];
+        tmp_solution[li][lj] = solution[li][lj];
       }
     }  
-    fill_Aw(r, Ar, h1, h2, M, N, info);
-    tau = dot_product(Ar, r, h1, h2, M, N, info) / pow(norm(Ar, h1, h2, M, N, info), 2.0);
+    calcLHS(r, Ar, h1, h2, M, N, info);
+    tau = dot_product(Ar, r, h1, h2, M, N, GridComm, info) / pow(norm(Ar, h1, h2, M, N, GridComm, info), 2.0);
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
-        w[li][lj] = w[li][lj] - tau * r[li][lj];
+        solution[li][lj] = solution[li][lj] - tau * r[li][lj];
       } 
     }
     for (li = 1; li < info->m + 1; ++li) {
       for (lj = 1; lj < info->n + 1; ++lj) {
-        tmp_w[li][lj] = w[li][lj] - tmp_w[li][lj];
+        tmp_solution[li][lj] = solution[li][lj] - tmp_solution[li][lj];
       }
     }
-  double diff = norm(tmp_w, h1, h2, M, N, info);
+  double diff = norm(tmp_solution, h1, h2, M, N, GridComm, info);
 #ifdef debug_solve_print
   printf("Diff: %lf\n", diff);
 #endif
@@ -702,23 +708,23 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
   printf("%lu,%lu\n", M, N);
   for (li = 1; li < info->m + 1; ++li) {
     for (lj = 1; lj < info->n + 1; ++lj) {
-      printf("%lf,%lf\n", u_arr[li][lj], w[li][lj]);
+      printf("%lf,%lf\n", exact_solution[li][lj], solution[li][lj]);
     }
   }
   for (size_t i = 0; i < info->m + 2; ++i) {
-    free(B[i]); 
-    free(w[i]);
-    free(tmp_w[i]);
+    free(rhs[i]); 
+    free(solution[i]);
+    free(tmp_solution[i]);
     free(r[i]);
     free(Ar[i]);
-    free(u_arr[i]);
+    free(exact_solution[i]);
   }
-  free(B);
-  free(w);
-  free(tmp_w);
+  free(rhs);
+  free(solution);
+  free(tmp_solution);
   free(r);
   free(Ar);
-  free(u_arr);
+  free(exact_solution);
 }
 
 int main(int argc, char **argv) {
@@ -738,10 +744,13 @@ int main(int argc, char **argv) {
   ProcInfo_t info;
   // MPI lib init
   MPI_Init(&argc, &argv); 
+  double start_time = MPI_Wtime();
   // Performe domain decomposition 
   domain_decomposition(M, N, &GridComm, &info);
   // Solve the task
   solve(M, N, &GridComm, &info);
+  if (info.rank == 0)
+    printf("Total time = %lf\n", MPI_Wtime() - start_time);
   MPI_Finalize();
   return 0;
 }
