@@ -1087,6 +1087,12 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
 #ifdef debug_solve_print
     printf("Iteration: %lu\n", iteration++);
 #endif
+    exchange(solution, 
+             send_up_row, recv_up_row, 
+             send_down_row, recv_down_row, 
+             send_left_column, recv_left_column, 
+             send_right_column, recv_right_column,
+             GridComm, info); 
     // r^(k) = Aw^(k) 
     calcLHS(solution, r, h1, h2, M, N, info);    
     // r^(k) = Aw^(k) - B
@@ -1096,6 +1102,12 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
         tmp_solution[li][lj] = solution[li][lj];
       }
     }  
+    exchange(r, 
+             send_up_row, recv_up_row, 
+             send_down_row, recv_down_row, 
+             send_left_column, recv_left_column, 
+             send_right_column, recv_right_column,
+             GridComm, info); 
     // Ar^(k)
     calcLHS(r, Ar, h1, h2, M, N, info);
     // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
