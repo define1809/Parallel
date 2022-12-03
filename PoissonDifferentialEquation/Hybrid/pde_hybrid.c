@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <mpi.h>
+#include <omp.h>
 
 #define TRUE (1)
 #define FALSE (0)
@@ -140,6 +141,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
   switch (info->proc_loc) {
   case LOC_INNER:
     // Internal grid points of inner domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic) 
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1; 
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -150,6 +152,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_INNER_BOT:
     // Internal grid points in domain which connected with bottom 
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -158,6 +161,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }  
     // rhsottom grid points in domain which connected with bottom
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
@@ -165,6 +169,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_INNER_TOP:
     // Internal grid points in domain which connected with top
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -173,6 +178,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Top grid points in domain which connected with top
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][info->n] = phi(gi * h1, N * h2);
@@ -180,6 +186,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_INNER_LEFT:
     // Internal grid points in domain which connected with left
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -188,6 +195,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Left grid points in domain which connected with left
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, gj * h2);
@@ -195,6 +203,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_INNER_RIGHT:
     // Internal grid points in domain which connected with right
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -203,6 +212,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Right grid points in domain which connected with right
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[info->m][lj] = phi(M * h1, gj * h2);
@@ -210,6 +220,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CORNER_BOTLEFT:
     // Internal grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -218,11 +229,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // rhsottom grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Left grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, gj * h2);
@@ -232,6 +245,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CORNER_BOTRIGHT:
     // Internal grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -240,11 +254,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // rhsottom grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Right grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[info->m][lj] = phi(M * h1, gj * h2);
@@ -254,6 +270,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CORNER_TOPLEFT:
     // Internal grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -262,11 +279,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Top grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Left grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, gj * h2);
@@ -276,6 +295,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CORNER_TOPRIGHT:
     // Internal grid point in corner top-right domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -284,11 +304,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Top grid points in corner top-right domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Right grid points in corner top-right domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[info->m][lj] = phi(M * h1, gj * h2);
@@ -298,6 +320,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CUP:
     // Internal grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -306,11 +329,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // rhsottom grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
     }
     // Left and right grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, gj * h2);
@@ -323,6 +348,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_CAP:
     // Internal grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -331,11 +357,13 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // Top grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][info->n] = phi(gi * h1, N * h2); 
     }
     // Left and right grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, gj * h2);
@@ -348,6 +376,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     break;
   case LOC_GLOBAL:
     // Internal grid points in global domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n; ++lj) {
@@ -356,12 +385,14 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
       }
     }
     // rhsottom and top grid points in global domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       rhs[li][1] = F(gi * h1, 0.0) + (2.0 / h2) * psi(gi * h1, 0.0);
       rhs[li][info->n] = phi(gi * h1, N * h2);
     }
     // Left and right grid points in global domain
+    #pragma omp parallel for default(shared) private(lj, gj) schedule(dynamic)
     for (lj = 2; lj < info->n; ++lj) {
       gj = info->start[1] + lj - 1;
       rhs[1][lj] = phi(0.0, lj * h2);
@@ -400,14 +431,13 @@ double dot_product(double** u, double** v, double h1, double h2, size_t M, size_
   size_t li, lj, gi, gj;
   double local_sum = 0.0;
   double reduced_sum = 0.0;
+  #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic) reduction(+:local_sum)
   for (li = 1; li < info->m + 1; ++li) {
     gi = info->start[0] + li - 1; 
-    double inner_sum = 0.0;
     for (lj = 1; lj < info->n + 1; ++lj) {
       gj = info->start[1] + lj - 1;  
-      inner_sum += h2 * rho(gi, gj, M, N) * u[li][lj] * v[li][lj];
+      local_sum += h1 * h2 * rho(gi, gj, M, N) * u[li][lj] * v[li][lj];
     }
-    local_sum += h1 * inner_sum;
   }
   MPI_Allreduce(&local_sum, &reduced_sum, 1, MPI_DOUBLE, MPI_SUM, *GridComm); 
   return reduced_sum;
@@ -443,6 +473,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
   switch (info->proc_loc) {
   case LOC_INNER:
     // Internal grid points of inner domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1; 
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -453,6 +484,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_INNER_BOT:
     // Internal grid points in domain which connected with bottom 
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -461,6 +493,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }  
     // Bottom grid points in domain which connected with bottom
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
@@ -468,6 +501,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_INNER_TOP:
     // Internal grid points in domain which connected with top
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -476,12 +510,14 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Top grid points in domain which connected with top
+    #pragma omp parallel for default(shared) private(li) schedule(dynamic)
     for (li = 1; li < info->m + 1; ++li) {
       r[li][info->n] = w[li][info->n];
     }
     break;
   case LOC_INNER_LEFT:
     // Internal grid points in domain which connected with left
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -490,12 +526,14 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Left grid points in domain which connected with left
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n + 1; ++lj) {
       r[1][lj] = w[1][lj];
     }
     break;
   case LOC_INNER_RIGHT:
     // Internal grid points in domain which connected with right
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n + 1; ++lj) {
@@ -504,12 +542,14 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Right grid points in domain which connected with right
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n + 1; ++lj) {
       r[info->m][lj] = w[info->m][lj];
     }
     break;
   case LOC_CORNER_BOTLEFT:
     // Internal grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -518,11 +558,13 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Bottom grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
     }
     // Left grid points in corner bot-left domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       r[1][lj] = w[1][lj];
     }
@@ -531,6 +573,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_CORNER_BOTRIGHT:
     // Internal grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -539,11 +582,13 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Bottom grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
     }
     // Right grid points in corner bot-right domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       r[info->m][lj] = w[info->m][lj];
     }
@@ -552,6 +597,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_CORNER_TOPLEFT:
     // Internal grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -560,10 +606,12 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Top grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(li) schedule(dynamic)
     for (li = 2; li < info->m + 1; ++li) {
       r[li][info->n] = w[li][info->n];
     }
     // Left grid points in corner top-left domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       r[1][lj] = w[1][lj];
     } 
@@ -572,6 +620,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_CORNER_TOPRIGHT:
     // Internal grid point in corner top-right domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -580,10 +629,12 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Top grid points in corner top-right domain
+    #pragma omp parallel for default(shared) private(li) schedule(dynamic)
     for (li = 1; li < info->m; ++li) {
       r[li][info->n] = w[li][info->n];
     }
     // Right grid points in corner top-right domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       r[info->m][lj] = w[info->m][lj];
     }
@@ -592,6 +643,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_CUP:
     // Internal grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n + 1; ++lj) {
@@ -600,11 +652,13 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Bottom grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
     }
     // Left and right grid points in CUP-shaped domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 2; lj < info->n + 1; ++lj) {
       r[1][lj] = w[1][lj];
       r[info->m][lj] = w[info->m][lj];
@@ -616,6 +670,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
   case LOC_CAP:
     // Internal grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 1; lj < info->n; ++lj) {
@@ -624,10 +679,12 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
       }
     }
     // Top grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(li) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       r[li][info->n] = w[li][info->n];
     }
     // Left and right grid points in CAP-shaped domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       r[1][lj] = w[1][lj];
       r[info->m][lj] = w[info->m][lj];
@@ -639,6 +696,7 @@ void calcLHS(double** w, double** r, double h1, double h2, size_t M, size_t N, P
     break;
 case LOC_GLOBAL:
     // Internal grid points in global domain
+    #pragma omp parallel for default(shared) private(li, gi, lj, gj) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       for (lj = 2; lj < info->n; ++lj) {
@@ -647,12 +705,14 @@ case LOC_GLOBAL:
       }
     }
     // Bottom and top grid points in global domain
+    #pragma omp parallel for default(shared) private(li, gi) schedule(dynamic)
     for (li = 2; li < info->m; ++li) {
       gi = info->start[0] + li - 1;
       r[li][1] = -(2.0 / h2) * bw(w, li, 2, gi, 1, h1, h2) + (q(gi * h1, 0.0) + 2.0 / h1) * w[li][1] - left_delta(w, li, 1, gi, 0, h1, h2);
       r[li][info->n] = w[li][info->n];
     }
     // Left and right grid points in global domain
+    #pragma omp parallel for default(shared) private(lj) schedule(dynamic)
     for (lj = 1; lj < info->n; ++lj) {
       r[1][lj] = w[1][lj];
       r[info->m][lj] = w[info->m][lj];
