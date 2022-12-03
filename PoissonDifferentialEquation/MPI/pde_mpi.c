@@ -290,7 +290,7 @@ void calcRHS(double** rhs, double h1, double h2, size_t M, size_t N, ProcInfo_t 
     }
     // Right grid points in corner top-right domain
     for (lj = 1; lj < info->n; ++lj) {
-      gj = info->start[1] + li - 1;
+      gj = info->start[1] + lj - 1;
       rhs[info->m][lj] = phi(M * h1, gj * h2);
     }
     // Top-right corner
