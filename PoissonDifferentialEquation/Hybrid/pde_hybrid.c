@@ -919,7 +919,7 @@ void exchange(double **domain,
     MPI_Sendrecv(send_left_column, info->n, MPI_DOUBLE, info->left, 0, recv_left_column, info->n, MPI_DOUBLE, info->left, 0, *GridComm, &Status);
     MPI_Sendrecv(send_right_column, info->n, MPI_DOUBLE, info->right, 0, recv_right_column, info->n, MPI_DOUBLE, info->right, 0, *GridComm, &Status);
     for (size_t i = 0; i < info->m; ++i) {
-      domain[i + 1][info->n] = recv_up_row[i];
+      domain[i + 1][info->n + 1] = recv_up_row[i];
     }
     for (size_t j = 0; j < info->n; ++j) {
       domain[0][j + 1] = recv_left_column[j];
@@ -1096,6 +1096,8 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
   // Step
   const double h1 = 4.0 / (double) M;
   const double h2 = 3.0 / (double) N;
+  double local_diff = 2 * eps;
+  double reduced_diff = 2 * eps;
   // Numeric methods variables
   double tau = 0.0;
   double **rhs = (double**) malloc((info->m + 2) * sizeof(double*));
@@ -1185,12 +1187,13 @@ void solve(size_t M, size_t N, MPI_Comm *GridComm, ProcInfo_t *info) {
       }
     }
     // diff = ||w^(k+1) - w^(k)||
-  double diff = norm(tmp_solution, h1, h2, M, N, GridComm, info);
+    local_diff  = norm(tmp_solution, h1, h2, M, N, GridComm, info);
+    MPI_Allreduce(&local_diff, &reduced_diff, 1, MPI_DOUBLE, MPI_MAX, *GridComm);
 #ifdef debug_solve_print
   printf("Diff: %lf\n", diff);
 #endif
-  if (diff < eps)
-    break;
+    if (reduced_diff < eps)
+      break;
   }
   printf("%lu,%lu\n", M, N);
   for (li = 1; li < info->m + 1; ++li) {
