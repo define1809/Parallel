@@ -1,25 +1,23 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
-#define M (160 + 1)
-#define N (160 + 1)
-const double h1 = (4.0 / (double) M)
-const double h2 = (3.0 / (double) N)
-const double eps = 1e-6;
-double tau = 0.0;
+#define M (160)
+#define N (160)
+const double h1 = (4.0 / (double) M);
+const double h2 = (3.0 / (double) N);
 #pragma dvm array distribute [block][block]
-double w[M][N];
+double w[M + 1][N + 1];
 #pragma dvm array align([i][j] with w[i][j])
-double tmp_w[M][N];
+double tmp_w[M + 1][N + 1];
 #pragma dvm array align([i][j] with w[i][j])
-double r[M][N];
+double r[M + 1][N + 1];
 #pragma dvm array align([i][j] with w[i][j])
-double Ar[M][N];
+double Ar[M + 1][N + 1];
 #pragma dvm array align([i][j] with w[i][j])
-double B[M][N];
+double B[M + 1][N + 1];
 #pragma dvm array align([i][j] with w[i][j])
-double u_arr[M][N];
+double u_arr[M + 1][N + 1];
 
 // There are variables from my variant 2.
 // u(x, y) = u_2(x, y) = sqrt(4 + x*y) 
@@ -62,53 +60,9 @@ double psi(double x, double y) {
     return u(x, y) - (x * k(x, y)) / (2.0 * u(x, y));
 }
 
-// Grid coefficients.
-
-double a(size_t i, size_t j, double h1, double h2) {
-    return k(i * h1 - 0.5 * h1, j * h2);
-}
-
-double b(size_t i, size_t j, double h1, double h2) {
-    return k(i * h1, j * h2 - 0.5 * h2);
-}
-
-// Right and left difference partial derivatives.
-
-double right_dx(double** v, size_t i, size_t j, double h1) {
-    return (v[i + 1][j] - v[i][j]) / h1;
-}
-
-double left_dx(double** v, size_t i, size_t j, double h1) {
-    return (v[i][j] - v[i - 1][j]) / h1;
-}
-
-double right_dy(double** v, size_t i, size_t j, double h2) {
-    return (v[i][j + 1] - v[i][j]) / h2;
-}
-
-double left_dy(double** v, size_t i, size_t j, double h2) {
-    return (v[i][j] - v[i][j - 1]) / h2;
-}
-
-// Laplace operator.
-
-double left_delta(double** w, size_t i, size_t j, double h1, double h2) {
-    return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * right_dx(w, i, j, h1) - a(i, j, h1,
-        h2) * left_dx(w, i, j, h1));
-}
-
-double right_delta(double** w, size_t i, size_t j, double h1, double h2) {
-    return (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * right_dy(w, i, j, h2) - b(i, j,
-        h1, h2) * left_dy(w, i, j, h2));
-}
-
-double laplace_operator(double** w, size_t i, size_t j, double h1, double h2) {
-    return left_delta(w, i, j, h1, h2) + right_delta(w, i, j, h1, h2);
-}
-
 // Fill B (right part of Aw = B).
 
-void fill_B(double** B, size_t M, size_t N, double h1, double h2) {
+void fill_B(void) {
     // Internal grid points. 
     for (size_t i = 1; i < M; ++i) {
         for (size_t j = 1; j < N; ++j) {
@@ -134,64 +88,81 @@ void fill_B(double** B, size_t M, size_t N, double h1, double h2) {
 
 // Weight functions for dot product.
 
-double rho_x(size_t i, size_t M) {
+double rho_x(size_t i) {
     return (i >= 1 && i <= M - 1) ? 1.0 : 0.5;
 }
 
-double rho_y(size_t j, size_t N) {
+double rho_y(size_t j) {
     return (j >= 1 && j <= N - 1) ? 1.0 : 0.5;
 }
 
-double rho(size_t i, size_t j, size_t M, size_t N) {
-    return rho_x(i, M) * rho_y(j, N);
+double rho(size_t i, size_t j) {
+    return rho_x(i) * rho_y(j);
 }
 
 // Dot product (u*v).
 
-double dot_product(double** u, double** v, double h1, double h2, size_t M,
-    size_t N) {
+double dot_product_Ar_r(void) {
     double sum = 0.0;
     for (size_t i = 0; i <= M; ++i) {
-        double tmp_sum = 0.0;
         for (size_t j = 0; j <= N; ++j) {
-            tmp_sum += h2 * rho(i, j, M, N) * u[i][j] * v[i][j];
+            sum += h1 * h2 * rho(i, j) * Ar[i][j] * r[i][j];
         }
-        sum += h1 * tmp_sum;
     }
     return sum;
 }
 
-// Norm (||u|| = sqrt(u*u)).
-
-double norm(double** u, double h1, double h2, size_t M, size_t N) {
-    return sqrt(dot_product(u, u, h1, h2, M, N));
+double dot_product_Ar_Ar(void) {
+    double sum = 0.0;
+    for (size_t i = 0; i <= M; ++i) {
+        for (size_t j = 0; j <= N; ++j) {
+            sum += h1 * h2 * rho(i, j) * Ar[i][j] * Ar[i][j];
+        }
+    }
+    return sum;
 }
 
-// (aw_~x)_ij
-
-double aw(double** w, size_t i, size_t j, double h1, double h2) {
-    return k(i * h1 - 0.5 * h1, j * h2) * left_dx(w, i, j, h1);
+double dot_product_tmp_w_tmp_w(void) {
+    double sum = 0.0;
+    for (size_t i = 0; i <= M; ++i) {
+        for (size_t j = 0; j <= N; ++j) {
+            sum += h1 * h2 * rho(i, j) * tmp_w[i][j] * tmp_w[i][j];
+        }
+    }
+    return sum;
 }
 
-// (bw_~y)_ij
+double norm_Ar(void) {
+    return sqrt(dot_product_Ar_Ar());
+}
 
-double bw(double** w, size_t i, size_t j, double h1, double h2) {
-    return k(i * h1, j * h2 - 0.5 * h2) * left_dy(w, i, j, h2);
+double norm_tmp_w(void) {
+    return sqrt(dot_product_tmp_w_tmp_w());
+}
+
+// Laplace operator.
+
+double laplace_operator_w(size_t i, size_t j) {
+    return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((w[i + 1][j] - w[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((w[i][j] - w[i - 1][j]) / h1)) + (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * ((w[i][j + 1] - w[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (w[i][j] - w[i][j - 1]) / h2);
+}
+
+double laplace_operator_r(size_t i, size_t j) {
+    return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((r[i + 1][j] - r[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((r[i][j] - r[i - 1][j]) / h1)) + (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * ((r[i][j + 1] - r[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (r[i][j] - r[i][j - 1]) / h2);
 }
 
 // Fill Aw (left part of Aw = B).
-// r = Aw.
 
-void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
+// fill_Aw(w, r);
+void fill_w2r(void) {
     // Internal grid points.
     for (size_t i = 1; i < M; ++i) {
         for (size_t j = 1; j < N; ++j) {
-            r[i][j] = -laplace_operator(w, i, j, h1, h2) + q(i * h1, j * h2) * w[i][j];
+            r[i][j] = -laplace_operator_w(i, j) + q(i * h1, j * h2) * w[i][j];
         }
     }
     // Bottom and top grid points.
     for (size_t i = 1; i < M; ++i) {
-        r[i][0] = -(2.0 / h2) * bw(w, i, 1, h1, h2) + (q(i * h1, 0) + 2.0 / h1) * w[i][0] - left_delta(w, i, 0, h1, h2);
+        r[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((w[i][1] - w[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * w[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((w[i + 1][0] - w[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((w[i][0] - w[i - 1][0]) / h1)));
         r[i][N] = w[i][N];
     }
     // Left and right grid points.
@@ -206,17 +177,44 @@ void fill_Aw(double** w, double** r, double h1, double h2, size_t M, size_t N) {
     r[M][N] = w[M][N];
 }
 
+// fill_Aw(r, Ar);
+void fill_r2Ar(void) {
+    // Internal grid points.
+    for (size_t i = 1; i < M; ++i) {
+        for (size_t j = 1; j < N; ++j) {
+            Ar[i][j] = -laplace_operator_r(i, j) + q(i * h1, j * h2) * r[i][j];
+        }
+    }
+    // Bottom and top grid points.
+    for (size_t i = 1; i < M; ++i) {
+        Ar[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((r[i][1] - r[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * r[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((r[i + 1][0] - r[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((r[i][0] - r[i - 1][0]) / h1)));
+        Ar[i][N] = r[i][N];
+    }
+    // Left and right grid points.
+    for (size_t j = 1; j < N; ++j) {
+        Ar[0][j] = r[0][j];
+        Ar[M][j] = r[M][j];
+    }
+    // Corner grid points.
+    Ar[0][0] = r[0][0];
+    Ar[M][0] = r[M][0];
+    Ar[0][N] = r[0][N];
+    Ar[M][N] = r[M][N];
+}
+
 int main(int argc, char** argv) {
+    const double eps = 1e-6;
+    double tau = 0.0;
     // w^0 = 0
     for (size_t i = 0; i <= M; ++i)
         for (size_t j = 0; j <= N; ++j)
             w[i][j] = 0.0;
     // Fill B
-    fill_B(B, M, N, h1, h2);
+    fill_B();
     // Iterations
     while (1) {
         // r^(k) = Aw^(k)
-        fill_Aw(w, r, h1, h2, M, N);
+        fill_w2r();
         // r^(k) = Aw^(k) - B
         for (size_t i = 0; i <= M; ++i)
             for (size_t j = 0; j <= N; ++j) {
@@ -224,9 +222,9 @@ int main(int argc, char** argv) {
                 tmp_w[i][j] = w[i][j];
             }
         // Ar^(k)
-        fill_Aw(r, Ar, h1, h2, M, N);
+        fill_r2Ar();
         // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
-        tau = dot_product(Ar, r, h1, h2, M, N) / pow(norm(Ar, h1, h2, M, N), 2);
+        tau = dot_product_Ar_r() / pow(norm_Ar(), 2);
         //w^(k+1) = w^(k) - tau^(k+1)r^(k)
         for (size_t i = 0; i <= M; ++i)
             for (size_t j = 0; j <= N; ++j)
@@ -235,17 +233,16 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i <= M; ++i)
             for (size_t j = 0; j <= N; ++j)
                 tmp_w[i][j] = w[i][j] - tmp_w[i][j];
-        double diff = norm(tmp_w, h1, h2, M, N);
-            //printf("%lf\n", diff);
+        double diff = norm_tmp_w();
         if (diff < eps)
             break;
     }
     for (size_t i = 0; i <= M; ++i)
         for (size_t j = 0; j <= N; ++j)
             u_arr[i][j] = u(i * h1, j * h2);
-    printf("%lu,%lu\n", M, N);
+    printf("%u,%u\n", M, N);
     for (size_t i = 0; i <= M; ++i)
         for (size_t j = 0; j <= N; ++j)
-            printf("%lf,%lf\n", u_arr[i][j], w[i][j]);
+            printf("%lf,%lf\n", u_arr[i][j], w[i][j]); 
     return 0;
 }
