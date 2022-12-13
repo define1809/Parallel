@@ -167,18 +167,6 @@ double norm_tmp_w(void) {
     return sqrt(dot_product_tmp_w_tmp_w());
 }
 
-// Laplace operator.
-
-double laplace_operator_w(size_t i, size_t j) {
-    return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((w[i + 1][j] - w[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((w[i][j] - w[i - 1][j]) / h1)) + (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * ((w[i][j + 1] - w[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (w[i][j] - w[i][j - 1]) / h2);
-}
-
-double laplace_operator_r(size_t i, size_t j) {
-    return (1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((r[i + 1][j] - r[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((r[i][j] - r[i - 1][j]) / h1)) + (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * ((r[i][j + 1] - r[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (r[i][j] - r[i][j - 1]) / h2);
-}
-
-// Fill Aw (left part of Aw = B).
-
 // fill_Aw(w, r);
 void fill_w2r(void) {
     size_t i, j;
@@ -195,7 +183,7 @@ void fill_w2r(void) {
     #pragma dvm parallel([i][j] on r[i][j]) shadow_renew(w)
     for (i = 1; i < M; ++i) {
         for (j = 1; j < N; ++j) {
-            r[i][j] = -laplace_operator_w(i, j) + q(i * h1, j * h2) * w[i][j];
+            r[i][j] = -((1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((w[i + 1][j] - w[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((w[i][j] - w[i - 1][j]) / h1)) +      (1.0 / h2) * (k(i * h1, j * h2 + 0.5 * h2) * ((w[i][j + 1] - w[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (w[i][j] - w[i][j - 1]) / h2)) + q(i * h1, j * h2) * w[i][j];
         }
     }
     // Bottom and top grid points.
@@ -236,7 +224,7 @@ void fill_r2Ar(void) {
     #pragma dvm parallel([i][j] on Ar[i][j]) shadow_renew(r) 
     for (i = 1; i < M; ++i) {
       for (j = 1; j < N; ++j) {
-          Ar[i][j] = -laplace_operator_r(i, j) + q(i * h1, j * h2) * r[i][j];
+          Ar[i][j] = -((1.0 / h1) * (k(i * h1 + 0.5 * h1, j * h2) * ((r[i + 1][j] - r[i][j]) / h1) - k(i * h1 - 0.5 * h1, j * h2) * ((r[i][j] - r[i - 1][j]) / h1)) + (1.0 / h2) * (k(i * h1, j * h2 +     0.5 * h2) * ((r[i][j + 1] - r[i][j]) / h2) - k(i * h1, j * h2 - 0.5 * h2) * (r[i][j] - r[i][j - 1]) / h2)) + q(i * h1, j * h2) * r[i][j];
       }
     }
     // Bottom and top grid points.
@@ -265,10 +253,12 @@ int main(int argc, char** argv) {
     const double eps = 1e-6;
     double tau = 0.0;
     double diff = 0.0;
+#ifdef _dvm
     double startt = dvmh_wtime(); 
     double endt = 0.0;
+#endif
     size_t i, j;
-    #pragma region
+    #pragma dvm region
     {
     // w^0 = 2.0
     #pragma dvm parallel([i][j] on w[i][j])
@@ -276,6 +266,7 @@ int main(int argc, char** argv) {
         for (j = 0; j < N + 1; ++j)
             w[i][j] = 2.0;
     }
+    #pragma get_actual(w)
     // Fill B
     fill_B();
     // Iterations
@@ -314,12 +305,16 @@ int main(int argc, char** argv) {
         if (diff < eps)
             break;
     }
+#ifdef _dvm
     dvmh_barrier();
     endt = dvmh_wtime();
+#endif
     for (i = 0; i < M + 1; ++i)
         for (j = 0; j < N + 1; ++j)
             u_arr[i][j] = u(i * h1, j * h2);
+#ifdef _dvm
     printf("Time = %lf\n", endt - startt);
+#endif
     printf("%u,%u\n", M, N);
     #pragma dvm get_actual(w)
     for (size_t i = 0; i <= M; ++i)
