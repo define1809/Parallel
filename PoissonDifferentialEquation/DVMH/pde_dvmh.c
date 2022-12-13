@@ -18,7 +18,6 @@ double Ar[M + 1][N + 1];
 double w[M + 1][N + 1];
 #pragma dvm array align([i][j] with B[i][j])
 double u_arr[M + 1][N + 1];
-double buff_i1[M + 1];
 
 // There are variables from my variant 2.
 // u(x, y) = u_2(x, y) = sqrt(4 + x*y) 
@@ -170,13 +169,6 @@ double norm_tmp_w(void) {
 // fill_Aw(w, r);
 void fill_w2r(void) {
     size_t i, j;
-    #pragma dvm remote_access(w[][1])
-    {
-    for (i = 0; i < M + 1; ++i) {
-	    buff_i1[i] = w[i][1];
-    }
-    }
-    #pragma actual(buff_i1)
     #pragma dvm region
     {
     // Internal grid points.
@@ -189,7 +181,7 @@ void fill_w2r(void) {
     // Bottom and top grid points.
     #pragma dvm parallel([i] on r[i][0]) shadow_renew(w) 
     for (i = 1; i < M; ++i) {
-        r[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((buff_i1[i] - w[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * w[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((w[i + 1][0] - w[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((w[i][0] - w[i - 1][0]) / h1)));
+        r[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((w[i][1] - w[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * w[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((w[i + 1][0] - w[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((w[i][0] - w[i - 1][0]) / h1)));
     }
     #pragma dvm parallel([i] on r[i][N]) 
     for (i = 1; i < M; ++i) {
@@ -205,19 +197,11 @@ void fill_w2r(void) {
         r[M][j] = w[M][j];
     }
     }
-    #pragma dvm get_actual(w)
 }
 
 // fill_Aw(r, Ar);
 void fill_r2Ar(void) {
     size_t i, j;
-    #pragma dvm remote_access(r[][1])
-    {
-    for (i = 0; i < M + 1; ++i) {
-	    buff_i1[i] = r[i][1];
-    }
-    }
-    #pragma actual(buff_i1)
     #pragma dvm region
     {
     // Internal grid points.
@@ -230,7 +214,7 @@ void fill_r2Ar(void) {
     // Bottom and top grid points.
     #pragma dvm parallel([i] on Ar[i][0]) shadow_renew(r) 
     for (i = 1; i < M; ++i) {
-      Ar[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((buff_i1[i] - r[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * r[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((r[i + 1][0] - r[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((r[i][0] - r[i - 1][0]) / h1)));
+      Ar[i][0] = -(2.0 / h2) * (k(i * h1, h2 - 0.5 * h2) * ((r[i][1] - r[i][0]) / h2)) + (q(i * h1, 0) + 2.0 / h1) * r[i][0] - ((1.0 / h1) * (k(i * h1 + 0.5 * h1, 0.0) * ((r[i + 1][0] - r[i][0]) / h1) - k(i * h1 - 0.5 * h1, 0.0) * ((r[i][0] - r[i - 1][0]) / h1)));
     }
     #pragma dvm parallel([i] on Ar[i][N])
     for (i = 1; i < M; ++i) {
@@ -246,7 +230,6 @@ void fill_r2Ar(void) {
 	    Ar[M][j] = r[M][j];
     }
     }
-    #pragma dvm get_actual(r)
 }
 
 int main(int argc, char** argv) {
@@ -266,7 +249,6 @@ int main(int argc, char** argv) {
         for (j = 0; j < N + 1; ++j)
             w[i][j] = 2.0;
     }
-    #pragma get_actual(w)
     // Fill B
     fill_B();
     // Iterations
