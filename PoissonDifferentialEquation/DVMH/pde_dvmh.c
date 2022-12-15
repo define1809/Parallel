@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <math.h>
 
-#define M (160)
-#define N (160)
+#define M (500)
+#define N (500)
 const double h1 = (4.0 / (double) M);
 const double h2 = (3.0 / (double) N);
 #pragma dvm array distribute [block][block]
@@ -265,7 +265,7 @@ int main(int argc, char** argv) {
                 tmp_w[i][j] = w[i][j];
             }
         }
-	      }
+	}
         // Ar^(k)
         fill_r2Ar();
         // tau^(k+1) = Ar^(k)*r^(k) / ||Ar^(k)||^2
